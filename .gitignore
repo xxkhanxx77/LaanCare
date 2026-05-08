@@ -4,4 +4,4 @@
 /data
 test.json
 /src/__pycache__
-.env
+/static/uploads
