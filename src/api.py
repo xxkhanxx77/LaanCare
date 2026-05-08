@@ -1,26 +1,36 @@
 try:
     from .config import *
     from .flex import *
+    from .medguard_ocr import OCRServiceError, perform_health_ocr
     from .storage import (
+        delete_medicine,
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
         list_medicines,
+        list_ocr_results,
         list_registrations,
+        save_medicine_item,
         save_medicine_items,
+        save_ocr_result,
         save_registration,
         update_registration,
     )
 except ImportError:
     from config import *
     from flex import *
+    from medguard_ocr import OCRServiceError, perform_health_ocr
     from storage import (
+        delete_medicine,
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
         list_medicines,
+        list_ocr_results,
         list_registrations,
+        save_medicine_item,
         save_medicine_items,
+        save_ocr_result,
         save_registration,
         update_registration,
     )
@@ -236,10 +246,111 @@ def medicines_success():
     return render_template("medicine_success.html", count=count, group_id=group_id)
 
 
-@app.get("/api/medicines")
+@app.route("/api/medicines", methods=["GET", "POST"])
 def medicines_api():
+    if request.method == "POST":
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"success": False, "error": "Expected JSON object"}), 400
+
+        group_id = normalize_registration_input(payload.get("group_id"))
+        item = medicine_item_from_payload(payload)
+        errors = validate_medicine_payload(group_id, item)
+        if errors:
+            return jsonify({"success": False, "errors": errors}), 400
+
+        medicine_id = save_medicine_item(group_id, item)
+        return jsonify({"success": True, "medicine_id": medicine_id}), 201
+
     group_id = request.args.get("group_id", "").strip() or None
     return jsonify({"medicines": list_medicines(group_id)})
+
+
+@app.delete("/api/medicines/<int:medicine_id>")
+def medicine_delete_api(medicine_id):
+    if not delete_medicine(medicine_id):
+        return jsonify({"success": False, "error": "Medicine not found"}), 404
+
+    return jsonify({"success": True, "deleted_id": medicine_id})
+
+
+@app.post("/api/health-ocr")
+def health_ocr_api():
+    group_id = request.form.get("group_id", "").strip()
+    image_file = request.files.get("file")
+
+    if not group_id:
+        return jsonify({"success": False, "error": "Missing group_id"}), 400
+
+    if not image_file or not image_file.filename:
+        return jsonify({"success": False, "error": "Missing file"}), 400
+
+    if not allowed_image_file(image_file.filename):
+        return jsonify({"success": False, "error": "Unsupported image file"}), 400
+
+    image_bytes = image_file.read()
+    if not image_bytes:
+        return jsonify({"success": False, "error": "Empty file"}), 400
+
+    original_filename = secure_filename(image_file.filename) or "health-image.jpg"
+    mimetype = image_file.mimetype or "application/octet-stream"
+    image_file.stream.seek(0)
+    image_path = save_uploaded_medicine_image(image_file)
+    stored_image_path = static_url_to_disk_path(image_path)
+
+    try:
+        result, ocr_source = perform_health_ocr(
+            stored_image_path,
+            image_bytes,
+            original_filename,
+            mimetype,
+            group_id=group_id,
+        )
+    except OCRServiceError as error:
+        payload = {"success": False, "error": error.message}
+        if error.details:
+            payload["details"] = error.details
+        return jsonify(payload), error.status_code
+
+    ocr_result_id = save_ocr_result(group_id, result, image_path)
+
+    return jsonify(
+        {
+            "success": True,
+            "ocr_result_id": ocr_result_id,
+            "image_path": image_path,
+            "ocr_source": ocr_source,
+            "result": result,
+        }
+    )
+
+
+@app.get("/api/ocr-results")
+def ocr_results_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    return jsonify({"ocr_results": list_ocr_results(group_id)})
+
+
+def medicine_item_from_payload(payload):
+    return {
+        "medicine_name": normalize_registration_input(payload.get("medicine_name")),
+        "dosage": normalize_registration_input(payload.get("dosage")),
+        "take_time": normalize_registration_input(payload.get("take_time")),
+        "instruction": normalize_registration_input(payload.get("instruction")),
+        "image_path": normalize_registration_input(payload.get("image_path")) or None,
+    }
+
+
+def validate_medicine_payload(group_id, item):
+    errors = {}
+
+    if not group_id:
+        errors["group_id"] = "Missing group_id"
+
+    if not item["medicine_name"]:
+        errors["medicine_name"] = "กรุณากรอกชื่อยา"
+
+    return errors
 
 
 def empty_medicine_item():
@@ -314,6 +425,14 @@ def save_uploaded_medicine_image(image_file):
     image_file.save(os.path.join(upload_folder, stored_filename))
 
     return f"/static/{relative_folder.replace(os.sep, '/')}/{stored_filename}"
+
+
+def static_url_to_disk_path(static_url):
+    if not static_url or not static_url.startswith("/static/"):
+        return None
+
+    relative_path = static_url.replace("/static/", "", 1)
+    return os.path.join(app.static_folder, relative_path)
 
 
 def registration_values_from_payload(payload, existing=None):
@@ -454,9 +573,14 @@ def build_feature_reply(postback_data):
     replies = {
         "health_ocr": "ส่งรูปฉลากยา หน้าจอวัดความดัน หน้าจอวัดน้ำตาล อาหาร หรือใบนัดหมอมาในแชทนี้ได้เลยครับ เดี๋ยวผมจะส่งรูปไปวิเคราะห์ผ่าน MedGuard AI",
         "medicine_management": "เมนูจัดการยาจะใช้สำหรับดู เพิ่ม และลบรายการยาที่คนไข้ใช้ปัจจุบันครับ",
+        "membership_required": "ขอจัดการสมาชิกในกลุ่มก่อนนะค้าบ แล้วค่อยเปิดใช้ MedGuard AI ต่อได้เลย",
     }
 
     return replies.get(feature)
+
+
+def group_has_registered_members(group_id):
+    return bool(group_id and list_registrations(group_id))
 
 ###########################
 # TODO USER MESSAGE HANDLER
@@ -487,8 +611,16 @@ def join_event(event):
     group_id = event.source.group_id
     print(group_id)
     # reply_token = event.reply_token
-    flex_message = register_flex()
-    flex_message = FlexSendMessage(alt_text="Group ID Information", contents=flex_message)
+    register_url = build_register_url(group_id) if group_id else None
+    medicine_url = build_medicine_url(group_id) if group_id else None
+    flex_message = FlexSendMessage(
+        alt_text="น้องพิล features",
+        contents=features_carousel_flex(
+            register_url,
+            medicine_url,
+            medguard_locked=not group_has_registered_members(group_id),
+        ),
+    )
     print(flex_message)
     msg = TextSendMessage("หวัดดีค้าบบ! 👋 ผมเป็น AI ผมเป็นผู้ช่วยเล็กๆ ที่จะมาคอยส่งข้อความเตือนเรื่องยาให้เป็นระยะ ต้องการให้ผมช่วยอะไร เรียกผมได้เลยครับ ผมช่วยคุณเองไม่ต้องห่วงงง 💊😆")
     line_bot_api.push_message(to=group_id, messages=msg)
@@ -504,14 +636,35 @@ def handle_message(event):
 
         if message_text == "น้องพิล":
             group_id = get_source_group_id(event.source)
-            line_user_id = getattr(event.source, "user_id", None)
-            register_url = build_register_url(group_id, line_user_id) if group_id else None
             medicine_url = build_medicine_url(group_id) if group_id else None
             flex_message = FlexSendMessage(
-                alt_text="น้องพิล features",
-                contents=features_carousel_flex(register_url, medicine_url),
+                alt_text="MedGuard AI",
+                contents=medguard_ai_bubble(medicine_url),
             )
-            line_bot_api.reply_message(event.reply_token, messages=flex_message)
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text="น้องพิลมาแล้วค้าบ วันนี้ให้ MedGuard AI ช่วยดูแลเรื่องสุขภาพให้นะ"),
+                    flex_message,
+                ],
+            )
+            return
+
+        if message_text == "จัดการสมาชิก":
+            group_id = get_source_group_id(event.source)
+            line_user_id = getattr(event.source, "user_id", None)
+            register_url = build_register_url(group_id, line_user_id) if group_id else None
+            flex_message = FlexSendMessage(
+                alt_text="จัดการสมาชิก",
+                contents=member_management_bubble(register_url),
+            )
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text="ได้เลยค้าบ มาอัปเดตข้อมูลสมาชิกในกลุ่มกัน"),
+                    flex_message,
+                ],
+            )
             return
 
     line_user_id = event.source.user_id
@@ -539,11 +692,33 @@ def handle_postback(event):
             return
 
         register_url = build_register_url(group_id, user_id)
-        flex_message = FlexSendMessage(
-            alt_text="Register",
-            contents=register_flex(register_url),
+        line_bot_api.reply_message(
+            event.reply_token,
+            messages=TextSendMessage(text=f"กดลิงก์นี้เพื่อจัดการสมาชิกได้เลยค้าบ\n{register_url}"),
         )
-        line_bot_api.reply_message(event.reply_token, messages=flex_message)
+        return
+
+    if get_postback_feature(postback_data) == "membership_required":
+        group_id = get_source_group_id(event.source)
+        if group_has_registered_members(group_id):
+            medicine_url = build_medicine_url(group_id)
+            flex_message = FlexSendMessage(
+                alt_text="MedGuard AI",
+                contents=medguard_ai_bubble(medicine_url),
+            )
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text="เจอสมาชิกในกลุ่มแล้วค้าบ เปิด MedGuard AI ให้เลยนะ"),
+                    flex_message,
+                ],
+            )
+            return
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            messages=TextSendMessage(text="ขอจัดการสมาชิกในกลุ่มก่อนนะค้าบ แล้วค่อยเปิดใช้ MedGuard AI ต่อได้เลย"),
+        )
         return
 
     feature_reply = build_feature_reply(postback_data)

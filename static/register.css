@@ -274,6 +274,216 @@ small {
     font-weight: 800;
 }
 
+.member-panel {
+    display: grid;
+    width: min(100%, 1040px);
+    gap: 24px;
+}
+
+.member-toolbar,
+.section-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.member-toolbar .brand-strip {
+    margin-bottom: 0;
+}
+
+.section-heading h2 {
+    margin: 0;
+    color: var(--ink);
+    font-size: 22px;
+    line-height: 1.2;
+}
+
+.member-editor,
+.member-directory {
+    display: grid;
+    gap: 18px;
+    border-top: 1px solid var(--line);
+    padding-top: 20px;
+}
+
+.message-panel {
+    border: 1px solid rgba(194, 65, 12, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 247, 237, 0.86);
+    color: var(--danger);
+    font-size: 13px;
+    font-weight: 800;
+    padding: 12px 14px;
+}
+
+.message-panel[hidden],
+.empty-state[hidden] {
+    display: none;
+}
+
+.success-message {
+    border-color: rgba(40, 125, 52, 0.24);
+    background: rgba(240, 253, 244, 0.9);
+    color: var(--green-dark);
+}
+
+.error-message {
+    color: var(--danger);
+}
+
+.form-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.secondary-button,
+.text-button,
+.icon-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+}
+
+.secondary-button {
+    min-height: 42px;
+    border: 1px solid rgba(40, 125, 52, 0.24);
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--green-dark);
+    padding: 0 14px;
+}
+
+.secondary-button span {
+    display: grid;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(85, 184, 46, 0.18);
+    line-height: 1;
+}
+
+.compact-button {
+    min-height: 38px;
+}
+
+.text-button {
+    min-height: 34px;
+    border: 0;
+    background: transparent;
+    color: var(--teal);
+    padding: 0;
+}
+
+.icon-button {
+    min-height: 36px;
+    border: 1px solid rgba(40, 125, 52, 0.2);
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--green-dark);
+    font-size: 12px;
+    padding: 0 10px;
+}
+
+.delete-button {
+    border-color: rgba(194, 65, 12, 0.24);
+    color: var(--danger);
+}
+
+.member-list {
+    display: grid;
+    gap: 12px;
+}
+
+.member-item {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr) auto;
+    gap: 14px;
+    align-items: center;
+    border: 1px solid rgba(40, 125, 52, 0.16);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.72);
+    padding: 14px;
+}
+
+.member-avatar {
+    display: grid;
+    width: 52px;
+    height: 52px;
+    place-items: center;
+    border-radius: 8px;
+    background: linear-gradient(135deg, rgba(85, 184, 46, 0.92), rgba(15, 143, 140, 0.88));
+    color: white;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1;
+    text-transform: uppercase;
+}
+
+.member-copy {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+}
+
+.member-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.member-line h3,
+.member-meta,
+.empty-state {
+    margin: 0;
+}
+
+.member-line h3 {
+    color: var(--ink);
+    font-size: 17px;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
+}
+
+.member-meta {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.role-pill {
+    border: 1px solid rgba(15, 143, 140, 0.22);
+    border-radius: 999px;
+    background: rgba(232, 250, 248, 0.74);
+    color: var(--teal);
+    font-size: 11px;
+    font-weight: 800;
+    padding: 5px 8px;
+}
+
+.member-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.empty-state {
+    border: 1px dashed rgba(40, 125, 52, 0.26);
+    border-radius: 8px;
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 700;
+    padding: 16px;
+    text-align: center;
+}
+
 @media (max-width: 640px) {
     .two-columns {
         grid-template-columns: 1fr;
@@ -289,5 +499,35 @@ small {
 
     .brand-strip {
         align-items: flex-start;
+    }
+
+    .member-toolbar,
+    .section-heading {
+        display: grid;
+    }
+
+    .member-item {
+        grid-template-columns: 44px minmax(0, 1fr);
+    }
+
+    .member-avatar {
+        width: 44px;
+        height: 44px;
+        font-size: 16px;
+    }
+
+    .member-actions {
+        grid-column: 1 / -1;
+        justify-content: stretch;
+    }
+
+    .member-actions .icon-button {
+        flex: 1 1 120px;
+    }
+
+    .form-actions,
+    .form-actions .submit-button,
+    .member-toolbar .secondary-button {
+        width: 100%;
     }
 }
