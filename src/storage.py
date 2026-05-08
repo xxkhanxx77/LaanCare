@@ -70,6 +70,25 @@ def init_db():
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS appointments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT NOT NULL,
+                hospital TEXT,
+                department TEXT,
+                doctor TEXT,
+                appointment_date TEXT,
+                appointment_time TEXT,
+                appointment_datetime TEXT,
+                preparation TEXT,
+                reason TEXT,
+                interpretation TEXT,
+                image_path TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS carebot_assessments (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id TEXT,
@@ -138,6 +157,53 @@ def init_db():
             """
             CREATE INDEX IF NOT EXISTS idx_medicine_alert_action_logs_medicine
             ON medicine_alert_action_logs(medicine_id)
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS appointment_alert_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT NOT NULL,
+                appointment_id INTEGER NOT NULL,
+                alert_key TEXT NOT NULL,
+                alert_date TEXT NOT NULL,
+                scheduled_for TEXT NOT NULL,
+                target_type TEXT NOT NULL,
+                target_id TEXT NOT NULL,
+                message TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error TEXT,
+                created_at TEXT NOT NULL,
+                sent_at TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_appointment_alert_logs_once
+            ON appointment_alert_logs(appointment_id, alert_key, alert_date, target_type, target_id)
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS appointment_alert_action_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_log_id INTEGER,
+                group_id TEXT,
+                appointment_id INTEGER,
+                action TEXT NOT NULL,
+                line_user_id TEXT,
+                source_type TEXT,
+                source_id TEXT,
+                created_at TEXT NOT NULL,
+                raw_payload TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_appointment_alert_action_logs_alert
+            ON appointment_alert_action_logs(alert_log_id, created_at)
             """
         )
         cleanup_orphan_medicine_alert_records(connection)
@@ -502,6 +568,131 @@ def save_medicine_item(group_id, item):
     return save_medicine_items(group_id, [item])[0]
 
 
+def save_appointment_item(group_id, item):
+    init_db()
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO appointments (
+                group_id,
+                hospital,
+                department,
+                doctor,
+                appointment_date,
+                appointment_time,
+                appointment_datetime,
+                preparation,
+                reason,
+                interpretation,
+                image_path,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                group_id,
+                item.get("hospital"),
+                item.get("department"),
+                item.get("doctor"),
+                item.get("appointment_date"),
+                item.get("appointment_time"),
+                item.get("appointment_datetime"),
+                item.get("preparation"),
+                item.get("reason"),
+                item.get("interpretation"),
+                item.get("image_path"),
+                created_at,
+            ),
+        )
+
+    return cursor.lastrowid
+
+
+def list_appointments(group_id=None):
+    init_db()
+
+    with get_connection() as connection:
+        if group_id:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM appointments
+                WHERE group_id = ?
+                ORDER BY appointment_datetime IS NULL, appointment_datetime ASC, created_at DESC, id DESC
+                """,
+                (group_id,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM appointments
+                ORDER BY appointment_datetime IS NULL, appointment_datetime ASC, created_at DESC, id DESC
+                """
+            ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def delete_appointment(appointment_id, group_id=None):
+    init_db()
+
+    with get_connection() as connection:
+        if group_id:
+            appointment = connection.execute(
+                """
+                SELECT id
+                FROM appointments
+                WHERE id = ? AND group_id = ?
+                """,
+                (appointment_id, group_id),
+            ).fetchone()
+        else:
+            appointment = connection.execute(
+                """
+                SELECT id
+                FROM appointments
+                WHERE id = ?
+                """,
+                (appointment_id,),
+            ).fetchone()
+
+        if not appointment:
+            return False
+
+        connection.execute(
+            """
+            DELETE FROM appointment_alert_action_logs
+            WHERE
+                appointment_id = ?
+                OR alert_log_id IN (
+                    SELECT id
+                    FROM appointment_alert_logs
+                    WHERE appointment_id = ?
+                )
+            """,
+            (appointment_id, appointment_id),
+        )
+        connection.execute(
+            """
+            DELETE FROM appointment_alert_logs
+            WHERE appointment_id = ?
+            """,
+            (appointment_id,),
+        )
+        cursor = connection.execute(
+            """
+            DELETE FROM appointments
+            WHERE id = ?
+            """,
+            (appointment_id,),
+        )
+
+    return cursor.rowcount > 0
+
+
 def list_medicines(group_id=None):
     init_db()
 
@@ -727,6 +918,176 @@ def list_medicine_alert_action_logs(group_id=None, limit=50):
                 """
                 SELECT *
                 FROM medicine_alert_action_logs
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def reserve_appointment_alert(alert):
+    init_db()
+    created_at = datetime.now(timezone.utc).isoformat()
+
+    with get_connection() as connection:
+        active_appointment = connection.execute(
+            """
+            SELECT id
+            FROM appointments
+            WHERE id = ? AND group_id = ?
+            """,
+            (alert["appointment_id"], alert["group_id"]),
+        ).fetchone()
+        if not active_appointment:
+            return None
+
+        cursor = connection.execute(
+            """
+            INSERT OR IGNORE INTO appointment_alert_logs (
+                group_id,
+                appointment_id,
+                alert_key,
+                alert_date,
+                scheduled_for,
+                target_type,
+                target_id,
+                message,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                alert["group_id"],
+                alert["appointment_id"],
+                alert["alert_key"],
+                alert["alert_date"],
+                alert["scheduled_for"],
+                alert.get("target_type", "group"),
+                alert.get("target_id") or alert["group_id"],
+                alert["message"],
+                "pending",
+                created_at,
+            ),
+        )
+
+        if cursor.rowcount == 0:
+            return None
+
+        return cursor.lastrowid
+
+
+def update_appointment_alert_log(alert_log_id, status, error=None):
+    init_db()
+    sent_at = datetime.now(timezone.utc).isoformat() if status == "sent" else None
+
+    with get_connection() as connection:
+        connection.execute(
+            """
+            UPDATE appointment_alert_logs
+            SET status = ?, error = ?, sent_at = ?
+            WHERE id = ?
+            """,
+            (status, error, sent_at, alert_log_id),
+        )
+
+
+def list_appointment_alert_logs(group_id=None, limit=50):
+    init_db()
+    limit = max(1, min(int(limit or 50), 200))
+
+    with get_connection() as connection:
+        if group_id:
+            rows = connection.execute(
+                """
+                SELECT appointment_alert_logs.*
+                FROM appointment_alert_logs
+                INNER JOIN appointments
+                    ON appointments.id = appointment_alert_logs.appointment_id
+                WHERE appointment_alert_logs.group_id = ?
+                ORDER BY appointment_alert_logs.created_at DESC, appointment_alert_logs.id DESC
+                LIMIT ?
+                """,
+                (group_id, limit),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT appointment_alert_logs.*
+                FROM appointment_alert_logs
+                INNER JOIN appointments
+                    ON appointments.id = appointment_alert_logs.appointment_id
+                ORDER BY appointment_alert_logs.created_at DESC, appointment_alert_logs.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def record_appointment_alert_action(data):
+    init_db()
+    created_at = datetime.now(timezone.utc).isoformat()
+    raw_payload = data.get("raw_payload")
+    if raw_payload is not None and not isinstance(raw_payload, str):
+        raw_payload = json.dumps(raw_payload, ensure_ascii=False)
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO appointment_alert_action_logs (
+                alert_log_id,
+                group_id,
+                appointment_id,
+                action,
+                line_user_id,
+                source_type,
+                source_id,
+                created_at,
+                raw_payload
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data.get("alert_log_id"),
+                data.get("group_id"),
+                data.get("appointment_id"),
+                data["action"],
+                data.get("line_user_id"),
+                data.get("source_type"),
+                data.get("source_id"),
+                created_at,
+                raw_payload,
+            ),
+        )
+
+    return cursor.lastrowid
+
+
+def list_appointment_alert_action_logs(group_id=None, limit=50):
+    init_db()
+    limit = max(1, min(int(limit or 50), 200))
+
+    with get_connection() as connection:
+        if group_id:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM appointment_alert_action_logs
+                WHERE group_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (group_id, limit),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM appointment_alert_action_logs
                 ORDER BY created_at DESC, id DESC
                 LIMIT ?
                 """,

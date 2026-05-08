@@ -200,7 +200,9 @@
 .ocr-panel,
 .result-panel,
 .medicine-inventory,
-.medicine-alerts {
+.medicine-alerts,
+.appointment-inventory,
+.appointment-alerts {
     display: grid;
     gap: 18px;
     border-top: 1px solid rgba(40, 125, 52, 0.18);
@@ -209,7 +211,9 @@
 
 .result-panel,
 .medicine-inventory,
-.medicine-alerts {
+.medicine-alerts,
+.appointment-inventory,
+.appointment-alerts {
     margin-top: 22px;
 }
 

@@ -560,6 +560,90 @@ def names_or_fallback(members, fallback):
     return ", ".join(names) if names else fallback
 
 
+def appointment_alert_bubble(alert, alert_log_id=None):
+    patient_names = names_or_fallback(alert.get("patients"), "ยังไม่มีข้อมูล Patient")
+    scheduled_time = alert.get("appointment_display") or alert.get("scheduled_time") or "-"
+    hospital = alert.get("hospital") or "โรงพยาบาล"
+    department = alert.get("department") or "-"
+    doctor = alert.get("doctor") or "-"
+    preparation = alert.get("preparation") or "นำใบนัดและเอกสารที่เกี่ยวข้องไปด้วย"
+    mode_label = "TEST MODE" if alert.get("test_mode") else "APPOINTMENT ALERT"
+    action_payload = {
+        "feature": "appointment_alert",
+        "action": "acknowledged",
+        "alert_log_id": alert_log_id,
+        "appointment_id": alert.get("appointment_id"),
+    }
+
+    return {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "20px",
+            "backgroundColor": "#f7fdf1",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "height": "66px",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "backgroundColor": "#3267b7",
+                    "cornerRadius": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "แจ้งเตือนนัดหมาย",
+                            "size": "xl",
+                            "weight": "bold",
+                            "align": "center",
+                            "color": "#ffffff",
+                        },
+                        {
+                            "type": "text",
+                            "text": mode_label,
+                            "size": "xs",
+                            "align": "center",
+                            "color": "#e7f0ff",
+                        },
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": hospital,
+                    "weight": "bold",
+                    "size": "xl",
+                    "color": "#14301f",
+                    "wrap": True,
+                },
+                medicine_alert_fact("วันเวลา", scheduled_time, 1),
+                {
+                    "type": "separator",
+                    "color": "#d8ead3",
+                },
+                medicine_alert_line("ผู้ป่วย", patient_names),
+                medicine_alert_line("แผนก", department),
+                medicine_alert_line("แพทย์", doctor),
+                medicine_alert_line("เตรียมตัว", preparation),
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "color": "#3267b7",
+                    "action": {
+                        "type": "postback",
+                        "label": "รับทราบ",
+                        "data": json.dumps(action_payload, ensure_ascii=False, separators=(",", ":")),
+                        "displayText": "รับทราบนัดหมายแล้ว",
+                    },
+                },
+            ],
+        },
+    }
+
+
 def feature_row(title, description, color):
     return {
         "type": "box",

@@ -1,4 +1,12 @@
 try:
+    from .appointment_alerts import (
+        build_appointment_alert_schedule,
+        collect_due_appointment_alerts,
+        parse_appointment_datetime,
+        recent_appointment_alert_logs,
+        run_appointment_alerts,
+        start_appointment_alert_worker,
+    )
     from .carebot import CareBotError, generate_carebot_reply, get_carebot_payload, get_phq9_result
     from .config import *
     from .flex import *
@@ -16,16 +24,21 @@ try:
     from .symptom_engine import ChatEngine
     from .symptom_openai_client import OpenAIJsonClient
     from .storage import (
+        delete_appointment,
         delete_medicine,
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
+        list_appointment_alert_action_logs,
+        list_appointments,
         list_carebot_assessments,
         list_medicine_alert_action_logs,
         list_medicines,
         list_ocr_results,
         list_registrations,
+        record_appointment_alert_action,
         record_medicine_alert_action,
+        save_appointment_item,
         save_carebot_assessment,
         save_medicine_item,
         save_medicine_items,
@@ -34,6 +47,14 @@ try:
         update_registration,
     )
 except ImportError:
+    from appointment_alerts import (
+        build_appointment_alert_schedule,
+        collect_due_appointment_alerts,
+        parse_appointment_datetime,
+        recent_appointment_alert_logs,
+        run_appointment_alerts,
+        start_appointment_alert_worker,
+    )
     from carebot import CareBotError, generate_carebot_reply, get_carebot_payload, get_phq9_result
     from config import *
     from flex import *
@@ -51,16 +72,21 @@ except ImportError:
     from symptom_engine import ChatEngine
     from symptom_openai_client import OpenAIJsonClient
     from storage import (
+        delete_appointment,
         delete_medicine,
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
+        list_appointment_alert_action_logs,
+        list_appointments,
         list_carebot_assessments,
         list_medicine_alert_action_logs,
         list_medicines,
         list_ocr_results,
         list_registrations,
+        record_appointment_alert_action,
         record_medicine_alert_action,
+        save_appointment_item,
         save_carebot_assessment,
         save_medicine_item,
         save_medicine_items,
@@ -93,7 +119,8 @@ from linebot.models import (
     JoinEvent
 )
 from linebot.exceptions import (
-    InvalidSignatureError
+    InvalidSignatureError,
+    LineBotApiError
 )
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
@@ -134,6 +161,7 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 line_bot_api = LineBotApi(channel_access_token=LINE_ACCESS_TOKEN, timeout=3)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 start_medicine_alert_worker(line_bot_api, app.logger)
+start_appointment_alert_worker(line_bot_api, app.logger)
 
 @app.route('/')
 def home():
@@ -692,11 +720,18 @@ def health_ocr_api():
         return jsonify(payload), error.status_code
 
     ocr_result_id = save_ocr_result(group_id, result, image_path)
+    appointment_id = None
+    if result.get("detected_type") == "appointment":
+        appointment_id = save_appointment_item(
+            group_id,
+            appointment_item_from_ocr(result, image_path),
+        )
 
     return jsonify(
         {
             "success": True,
             "ocr_result_id": ocr_result_id,
+            "appointment_id": appointment_id,
             "image_path": image_path,
             "ocr_source": ocr_source,
             "result": result,
@@ -710,6 +745,91 @@ def ocr_results_api():
     return jsonify({"ocr_results": list_ocr_results(group_id)})
 
 
+@app.get("/api/appointments")
+def appointments_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    return jsonify({"appointments": list_appointments(group_id)})
+
+
+@app.delete("/api/appointments/<int:appointment_id>")
+def appointment_delete_api(appointment_id):
+    group_id = request.args.get("group_id", "").strip() or None
+    if not delete_appointment(appointment_id, group_id=group_id):
+        return jsonify({"success": False, "error": "Appointment not found"}), 404
+
+    return jsonify({"success": True, "deleted_id": appointment_id})
+
+
+@app.get("/api/appointment-alerts/schedule")
+def appointment_alert_schedule_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    return jsonify({"schedule": build_appointment_alert_schedule(group_id)})
+
+
+@app.get("/api/appointment-alerts/due")
+def appointment_alert_due_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    now = request.args.get("now", "").strip() or None
+    window_minutes = request.args.get("window_minutes", "").strip() or None
+
+    try:
+        window_minutes = int(window_minutes) if window_minutes else None
+        alerts = collect_due_appointment_alerts(group_id=group_id, at=now, window_minutes=window_minutes)
+    except (TypeError, ValueError) as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+
+    return jsonify({"success": True, "alerts": alerts})
+
+
+@app.post("/api/appointment-alerts/run")
+def appointment_alert_run_api():
+    payload = request.get_json(silent=True) or {}
+    group_id = normalize_registration_input(payload.get("group_id") or request.args.get("group_id")) or None
+    now = normalize_registration_input(payload.get("now") or request.args.get("now")) or None
+    window_minutes = payload.get("window_minutes") or request.args.get("window_minutes")
+    dry_run = truthy(payload.get("dry_run") if "dry_run" in payload else request.args.get("dry_run"))
+
+    try:
+        window_minutes = int(window_minutes) if window_minutes else None
+        result = run_appointment_alerts(
+            line_bot_api,
+            group_id=group_id,
+            at=now,
+            window_minutes=window_minutes,
+            dry_run=dry_run,
+        )
+    except (TypeError, ValueError) as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+
+    return jsonify(result)
+
+
+@app.get("/api/appointment-alerts/logs")
+def appointment_alert_logs_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    limit = request.args.get("limit", "50").strip() or "50"
+
+    try:
+        limit = int(limit)
+    except ValueError:
+        limit = 50
+
+    return jsonify({"logs": recent_appointment_alert_logs(group_id=group_id, limit=limit)})
+
+
+@app.get("/api/appointment-alerts/action-logs")
+def appointment_alert_action_logs_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    limit = request.args.get("limit", "50").strip() or "50"
+
+    try:
+        limit = int(limit)
+    except ValueError:
+        limit = 50
+
+    return jsonify({"logs": list_appointment_alert_action_logs(group_id=group_id, limit=limit)})
+
+
 def medicine_item_from_payload(payload):
     return {
         "medicine_name": normalize_registration_input(payload.get("medicine_name")),
@@ -718,6 +838,29 @@ def medicine_item_from_payload(payload):
         "instruction": normalize_registration_input(payload.get("instruction")),
         "image_path": normalize_registration_input(payload.get("image_path")) or None,
     }
+
+
+def appointment_item_from_ocr(result, image_path=None):
+    data = result.get("data") if isinstance(result.get("data"), dict) else {}
+    item = {
+        "hospital": normalize_registration_input(data.get("hospital")),
+        "department": normalize_registration_input(data.get("department")),
+        "doctor": normalize_registration_input(data.get("doctor")),
+        "appointment_date": normalize_registration_input(data.get("date")),
+        "appointment_time": normalize_registration_input(data.get("time")),
+        "preparation": normalize_registration_input(data.get("preparation")),
+        "reason": normalize_registration_input(data.get("reason")),
+        "interpretation": normalize_registration_input(result.get("interpretation")),
+        "image_path": image_path,
+    }
+    parsed_datetime = parse_appointment_datetime(
+        {
+            "appointment_date": item["appointment_date"],
+            "appointment_time": item["appointment_time"],
+        }
+    )
+    item["appointment_datetime"] = parsed_datetime.isoformat() if parsed_datetime else None
+    return item
 
 
 def validate_medicine_payload(group_id, item):
@@ -1168,13 +1311,20 @@ def handle_message(event):
             )
             return
 
-    line_user_id = event.source.user_id
+    line_user_id = getattr(event.source, "user_id", None)
+    if not line_user_id:
+        return
+
     profile = None
-    while not profile:
+    for _ in range(3):
         try:
             profile = line_bot_api.get_profile(line_user_id)
+            break
         except ConnectionError:
             time.sleep(1)
+        except LineBotApiError as error:
+            app.logger.warning("Unable to fetch LINE profile for %s: %s", line_user_id, error)
+            break
     print('uid: ',line_user_id)
     
 @handler.add(PostbackEvent)
@@ -1184,6 +1334,29 @@ def handle_postback(event):
     event_type = event.type
     postback_data = event.postback.data
     postback_payload = get_postback_json(postback_data)
+    if postback_payload.get("feature") == "appointment_alert" and postback_payload.get("action") == "acknowledged":
+        action_log_id = record_appointment_alert_action(
+            {
+                "alert_log_id": postback_payload.get("alert_log_id"),
+                "group_id": get_source_group_id(event.source),
+                "appointment_id": postback_payload.get("appointment_id"),
+                "action": "acknowledged",
+                "line_user_id": user_id,
+                "source_type": get_source_type(event.source),
+                "source_id": get_source_id(event.source),
+                "raw_payload": {
+                    "postback": postback_payload,
+                    "timestamp": timestamp,
+                    "event_type": event_type,
+                },
+            }
+        )
+        line_bot_api.reply_message(
+            event.reply_token,
+            messages=TextSendMessage(text=f"รับทราบนัดหมายแล้วครับ log #{action_log_id}"),
+        )
+        return
+
     if postback_payload.get("feature") == "medicine_alert" and postback_payload.get("action") == "taken":
         action_log_id = record_medicine_alert_action(
             {
