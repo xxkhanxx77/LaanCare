@@ -1,22 +1,53 @@
 import json
-import os
-import sqlite3
 from datetime import datetime, timezone
+from urllib.parse import urlparse
+
+import pymysql
+import pymysql.cursors
 
 try:
-    from .config import DATABASE_PATH
+    from .config import DATABASE_URL
 except ImportError:
-    from config import DATABASE_PATH
+    from config import DATABASE_URL
+
+
+class _ConnectionWrapper:
+    """Wraps pymysql connection to provide a sqlite3-like interface."""
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def execute(self, sql, params=None):
+        cursor = self._conn.cursor()
+        cursor.execute(sql, params)
+        return cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            if exc_type is None:
+                self._conn.commit()
+            else:
+                self._conn.rollback()
+        finally:
+            self._conn.close()
+        return False
 
 
 def get_connection():
-    db_dir = os.path.dirname(DATABASE_PATH)
-    if db_dir:
-        os.makedirs(db_dir, exist_ok=True)
-
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    return connection
+    url = urlparse(DATABASE_URL)
+    conn = pymysql.connect(
+        host=url.hostname,
+        port=url.port or 3306,
+        user=url.username,
+        password=url.password,
+        database=url.path.lstrip("/"),
+        charset="utf8mb4",
+        cursorclass=pymysql.cursors.DictCursor,
+    )
+    return _ConnectionWrapper(conn)
 
 
 def init_db():
@@ -24,210 +55,183 @@ def init_db():
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS registrations (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT NOT NULL,
-                line_user_id TEXT,
-                first_name TEXT NOT NULL,
-                last_name TEXT NOT NULL,
-                email TEXT NOT NULL,
-                phone TEXT NOT NULL,
-                gender TEXT NOT NULL,
-                role TEXT NOT NULL,
-                height_cm REAL,
-                weight_kg REAL,
-                created_at TEXT NOT NULL
-            )
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255) NOT NULL,
+                line_user_id VARCHAR(255),
+                first_name VARCHAR(255) NOT NULL,
+                last_name VARCHAR(255) NOT NULL,
+                email VARCHAR(255) NOT NULL,
+                phone VARCHAR(255) NOT NULL,
+                gender VARCHAR(50) NOT NULL,
+                role VARCHAR(100) NOT NULL,
+                height_cm DOUBLE,
+                weight_kg DOUBLE,
+                created_at VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
-        ensure_column(connection, "registrations", "line_user_id", "TEXT")
+        ensure_column(connection, "registrations", "line_user_id", "VARCHAR(255)")
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS medicines (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT NOT NULL,
-                medicine_name TEXT NOT NULL,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255) NOT NULL,
+                medicine_name VARCHAR(255) NOT NULL,
                 dosage TEXT,
                 take_time TEXT,
                 instruction TEXT,
                 image_path TEXT,
-                created_at TEXT NOT NULL
-            )
+                created_at VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS ocr_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT NOT NULL,
-                detected_type TEXT,
-                data_json TEXT,
-                interpretation TEXT,
-                interaction_report TEXT,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255) NOT NULL,
+                detected_type VARCHAR(255),
+                data_json LONGTEXT,
+                interpretation LONGTEXT,
+                interaction_report LONGTEXT,
                 image_path TEXT,
-                created_at TEXT NOT NULL
-            )
+                created_at VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS appointments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT NOT NULL,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255) NOT NULL,
                 hospital TEXT,
                 department TEXT,
                 doctor TEXT,
-                appointment_date TEXT,
-                appointment_time TEXT,
-                appointment_datetime TEXT,
+                appointment_date VARCHAR(255),
+                appointment_time VARCHAR(255),
+                appointment_datetime VARCHAR(255),
                 preparation TEXT,
                 reason TEXT,
-                interpretation TEXT,
+                interpretation LONGTEXT,
                 image_path TEXT,
-                created_at TEXT NOT NULL
-            )
+                created_at VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS carebot_assessments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT,
-                line_user_id TEXT,
-                assessment_type TEXT NOT NULL,
-                score INTEGER NOT NULL,
-                responses_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            )
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255),
+                line_user_id VARCHAR(255),
+                assessment_type VARCHAR(255) NOT NULL,
+                score INT NOT NULL,
+                responses_json LONGTEXT NOT NULL,
+                created_at VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS carebot_chat_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT,
-                line_user_id TEXT,
-                role TEXT NOT NULL,
-                message TEXT NOT NULL,
-                context_json TEXT DEFAULT '{}',
-                created_at TEXT NOT NULL
-            )
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255),
+                line_user_id VARCHAR(255),
+                role VARCHAR(100) NOT NULL,
+                message LONGTEXT NOT NULL,
+                context_json LONGTEXT,
+                created_at VARCHAR(255) NOT NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS medicine_alert_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT NOT NULL,
-                medicine_id INTEGER NOT NULL,
-                alert_key TEXT NOT NULL,
-                alert_date TEXT NOT NULL,
-                scheduled_for TEXT NOT NULL,
-                target_type TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                message TEXT NOT NULL,
-                status TEXT NOT NULL,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255) NOT NULL,
+                medicine_id INT NOT NULL,
+                alert_key VARCHAR(100) NOT NULL,
+                alert_date VARCHAR(50) NOT NULL,
+                scheduled_for VARCHAR(255) NOT NULL,
+                target_type VARCHAR(50) NOT NULL,
+                target_id VARCHAR(255) NOT NULL,
+                message LONGTEXT NOT NULL,
+                status VARCHAR(100) NOT NULL,
                 error TEXT,
-                created_at TEXT NOT NULL,
-                sent_at TEXT
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_medicine_alert_logs_once
-            ON medicine_alert_logs(medicine_id, alert_key, alert_date, target_type, target_id)
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_medicine_alert_logs_medicine
-            ON medicine_alert_logs(medicine_id)
+                created_at VARCHAR(255) NOT NULL,
+                sent_at VARCHAR(255),
+                UNIQUE KEY idx_medicine_alert_logs_once (medicine_id, alert_key, alert_date, target_type, target_id),
+                KEY idx_medicine_alert_logs_medicine (medicine_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS medicine_alert_action_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                alert_log_id INTEGER,
-                group_id TEXT,
-                medicine_id INTEGER,
-                action TEXT NOT NULL,
-                line_user_id TEXT,
-                source_type TEXT,
-                source_id TEXT,
-                created_at TEXT NOT NULL,
-                raw_payload TEXT
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_medicine_alert_action_logs_alert
-            ON medicine_alert_action_logs(alert_log_id, created_at)
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_medicine_alert_action_logs_medicine
-            ON medicine_alert_action_logs(medicine_id)
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                alert_log_id INT,
+                group_id VARCHAR(255),
+                medicine_id INT,
+                action VARCHAR(255) NOT NULL,
+                line_user_id VARCHAR(255),
+                source_type VARCHAR(255),
+                source_id VARCHAR(255),
+                created_at VARCHAR(255) NOT NULL,
+                raw_payload LONGTEXT,
+                KEY idx_medicine_alert_action_logs_alert (alert_log_id, created_at),
+                KEY idx_medicine_alert_action_logs_medicine (medicine_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS appointment_alert_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                group_id TEXT NOT NULL,
-                appointment_id INTEGER NOT NULL,
-                alert_key TEXT NOT NULL,
-                alert_date TEXT NOT NULL,
-                scheduled_for TEXT NOT NULL,
-                target_type TEXT NOT NULL,
-                target_id TEXT NOT NULL,
-                message TEXT NOT NULL,
-                status TEXT NOT NULL,
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id VARCHAR(255) NOT NULL,
+                appointment_id INT NOT NULL,
+                alert_key VARCHAR(100) NOT NULL,
+                alert_date VARCHAR(50) NOT NULL,
+                scheduled_for VARCHAR(255) NOT NULL,
+                target_type VARCHAR(50) NOT NULL,
+                target_id VARCHAR(255) NOT NULL,
+                message LONGTEXT NOT NULL,
+                status VARCHAR(100) NOT NULL,
                 error TEXT,
-                created_at TEXT NOT NULL,
-                sent_at TEXT
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_appointment_alert_logs_once
-            ON appointment_alert_logs(appointment_id, alert_key, alert_date, target_type, target_id)
+                created_at VARCHAR(255) NOT NULL,
+                sent_at VARCHAR(255),
+                UNIQUE KEY idx_appointment_alert_logs_once (appointment_id, alert_key, alert_date, target_type, target_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS appointment_alert_action_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                alert_log_id INTEGER,
-                group_id TEXT,
-                appointment_id INTEGER,
-                action TEXT NOT NULL,
-                line_user_id TEXT,
-                source_type TEXT,
-                source_id TEXT,
-                created_at TEXT NOT NULL,
-                raw_payload TEXT
-            )
-            """
-        )
-        connection.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_appointment_alert_action_logs_alert
-            ON appointment_alert_action_logs(alert_log_id, created_at)
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                alert_log_id INT,
+                group_id VARCHAR(255),
+                appointment_id INT,
+                action VARCHAR(255) NOT NULL,
+                line_user_id VARCHAR(255),
+                source_type VARCHAR(255),
+                source_id VARCHAR(255),
+                created_at VARCHAR(255) NOT NULL,
+                raw_payload LONGTEXT,
+                KEY idx_appointment_alert_action_logs_alert (alert_log_id, created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
         cleanup_orphan_medicine_alert_records(connection)
 
 
 def ensure_column(connection, table_name, column_name, column_type):
-    columns = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
-    if column_name in {column["name"] for column in columns}:
+    cursor = connection.execute("SHOW COLUMNS FROM %s" % table_name)
+    columns = cursor.fetchall()
+    if column_name in {col["Field"] for col in columns}:
         return
 
-    connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+    connection.execute(
+        "ALTER TABLE %s ADD COLUMN %s %s" % (table_name, column_name, column_type)
+    )
 
 
 def cleanup_orphan_medicine_alert_records(connection):
@@ -287,7 +291,7 @@ def delete_medicine_alert_records(connection, medicine_ids):
     if not medicine_ids:
         return
 
-    placeholders = ", ".join("?" for _ in medicine_ids)
+    placeholders = ", ".join("%s" for _ in medicine_ids)
     params = tuple(medicine_ids)
     connection.execute(
         f"""
@@ -322,18 +326,18 @@ def save_registration(data):
                 """
                 UPDATE registrations
                 SET
-                    group_id = ?,
-                    line_user_id = ?,
-                    first_name = ?,
-                    last_name = ?,
-                    email = ?,
-                    phone = ?,
-                    gender = ?,
-                    role = ?,
-                    height_cm = ?,
-                    weight_kg = ?,
-                    created_at = ?
-                WHERE id = ?
+                    group_id = %s,
+                    line_user_id = %s,
+                    first_name = %s,
+                    last_name = %s,
+                    email = %s,
+                    phone = %s,
+                    gender = %s,
+                    role = %s,
+                    height_cm = %s,
+                    weight_kg = %s,
+                    created_at = %s
+                WHERE id = %s
                 """,
                 (
                     data["group_id"],
@@ -367,7 +371,7 @@ def save_registration(data):
                 weight_kg,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 data["group_id"],
@@ -394,7 +398,7 @@ def get_registration(registration_id):
             """
             SELECT *
             FROM registrations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (registration_id,),
         ).fetchone()
@@ -413,7 +417,7 @@ def get_registration_by_line_user_id(line_user_id):
             """
             SELECT *
             FROM registrations
-            WHERE line_user_id = ?
+            WHERE line_user_id = %s
             ORDER BY created_at DESC, id DESC
             LIMIT 1
             """,
@@ -432,7 +436,7 @@ def update_registration(registration_id, data):
             """
             SELECT id
             FROM registrations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (registration_id,),
         ).fetchone()
@@ -443,18 +447,18 @@ def update_registration(registration_id, data):
             """
             UPDATE registrations
             SET
-                group_id = ?,
-                line_user_id = ?,
-                first_name = ?,
-                last_name = ?,
-                email = ?,
-                phone = ?,
-                gender = ?,
-                role = ?,
-                height_cm = ?,
-                weight_kg = ?,
-                created_at = ?
-            WHERE id = ?
+                group_id = %s,
+                line_user_id = %s,
+                first_name = %s,
+                last_name = %s,
+                email = %s,
+                phone = %s,
+                gender = %s,
+                role = %s,
+                height_cm = %s,
+                weight_kg = %s,
+                created_at = %s
+            WHERE id = %s
             """,
             (
                 data["group_id"],
@@ -475,7 +479,7 @@ def update_registration(registration_id, data):
             """
             SELECT *
             FROM registrations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (registration_id,),
         ).fetchone()
@@ -490,7 +494,7 @@ def delete_registration(registration_id):
         cursor = connection.execute(
             """
             DELETE FROM registrations
-            WHERE id = ?
+            WHERE id = %s
             """,
             (registration_id,),
         )
@@ -506,7 +510,7 @@ def find_registration_id_by_line_user_id(connection, line_user_id):
         """
         SELECT id
         FROM registrations
-        WHERE line_user_id = ?
+        WHERE line_user_id = %s
         ORDER BY created_at DESC, id DESC
         LIMIT 1
         """,
@@ -525,7 +529,7 @@ def list_registrations(group_id=None):
                 """
                 SELECT *
                 FROM registrations
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY created_at DESC
                 """,
                 (group_id,),
@@ -560,7 +564,7 @@ def save_medicine_items(group_id, items):
                     image_path,
                     created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     group_id,
@@ -602,7 +606,7 @@ def save_appointment_item(group_id, item):
                 image_path,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 group_id,
@@ -632,7 +636,7 @@ def list_appointments(group_id=None):
                 """
                 SELECT *
                 FROM appointments
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY appointment_datetime IS NULL, appointment_datetime ASC, created_at DESC, id DESC
                 """,
                 (group_id,),
@@ -658,7 +662,7 @@ def delete_appointment(appointment_id, group_id=None):
                 """
                 SELECT id
                 FROM appointments
-                WHERE id = ? AND group_id = ?
+                WHERE id = %s AND group_id = %s
                 """,
                 (appointment_id, group_id),
             ).fetchone()
@@ -667,7 +671,7 @@ def delete_appointment(appointment_id, group_id=None):
                 """
                 SELECT id
                 FROM appointments
-                WHERE id = ?
+                WHERE id = %s
                 """,
                 (appointment_id,),
             ).fetchone()
@@ -679,11 +683,11 @@ def delete_appointment(appointment_id, group_id=None):
             """
             DELETE FROM appointment_alert_action_logs
             WHERE
-                appointment_id = ?
+                appointment_id = %s
                 OR alert_log_id IN (
                     SELECT id
                     FROM appointment_alert_logs
-                    WHERE appointment_id = ?
+                    WHERE appointment_id = %s
                 )
             """,
             (appointment_id, appointment_id),
@@ -691,14 +695,14 @@ def delete_appointment(appointment_id, group_id=None):
         connection.execute(
             """
             DELETE FROM appointment_alert_logs
-            WHERE appointment_id = ?
+            WHERE appointment_id = %s
             """,
             (appointment_id,),
         )
         cursor = connection.execute(
             """
             DELETE FROM appointments
-            WHERE id = ?
+            WHERE id = %s
             """,
             (appointment_id,),
         )
@@ -715,7 +719,7 @@ def list_medicines(group_id=None):
                 """
                 SELECT *
                 FROM medicines
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY created_at DESC, id DESC
                 """,
                 (group_id,),
@@ -741,7 +745,7 @@ def delete_medicine(medicine_id, group_id=None):
                 """
                 SELECT id
                 FROM medicines
-                WHERE id = ? AND group_id = ?
+                WHERE id = %s AND group_id = %s
                 """,
                 (medicine_id, group_id),
             ).fetchone()
@@ -750,7 +754,7 @@ def delete_medicine(medicine_id, group_id=None):
                 """
                 SELECT id
                 FROM medicines
-                WHERE id = ?
+                WHERE id = %s
                 """,
                 (medicine_id,),
             ).fetchone()
@@ -762,7 +766,7 @@ def delete_medicine(medicine_id, group_id=None):
         cursor = connection.execute(
             """
             DELETE FROM medicines
-            WHERE id = ?
+            WHERE id = %s
             """,
             (medicine_id,),
         )
@@ -779,7 +783,7 @@ def reserve_medicine_alert(alert):
             """
             SELECT id
             FROM medicines
-            WHERE id = ? AND group_id = ?
+            WHERE id = %s AND group_id = %s
             """,
             (alert["medicine_id"], alert["group_id"]),
         ).fetchone()
@@ -788,7 +792,7 @@ def reserve_medicine_alert(alert):
 
         cursor = connection.execute(
             """
-            INSERT OR IGNORE INTO medicine_alert_logs (
+            INSERT IGNORE INTO medicine_alert_logs (
                 group_id,
                 medicine_id,
                 alert_key,
@@ -800,7 +804,7 @@ def reserve_medicine_alert(alert):
                 status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 alert["group_id"],
@@ -830,8 +834,8 @@ def update_medicine_alert_log(alert_log_id, status, error=None):
         connection.execute(
             """
             UPDATE medicine_alert_logs
-            SET status = ?, error = ?, sent_at = ?
-            WHERE id = ?
+            SET status = %s, error = %s, sent_at = %s
+            WHERE id = %s
             """,
             (status, error, sent_at, alert_log_id),
         )
@@ -849,9 +853,9 @@ def list_medicine_alert_logs(group_id=None, limit=50):
                 FROM medicine_alert_logs
                 INNER JOIN medicines
                     ON medicines.id = medicine_alert_logs.medicine_id
-                WHERE medicine_alert_logs.group_id = ?
+                WHERE medicine_alert_logs.group_id = %s
                 ORDER BY medicine_alert_logs.created_at DESC, medicine_alert_logs.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (group_id, limit),
             ).fetchall()
@@ -863,7 +867,7 @@ def list_medicine_alert_logs(group_id=None, limit=50):
                 INNER JOIN medicines
                     ON medicines.id = medicine_alert_logs.medicine_id
                 ORDER BY medicine_alert_logs.created_at DESC, medicine_alert_logs.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (limit,),
             ).fetchall()
@@ -892,7 +896,7 @@ def record_medicine_alert_action(data):
                 created_at,
                 raw_payload
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 data.get("alert_log_id"),
@@ -920,9 +924,9 @@ def list_medicine_alert_action_logs(group_id=None, limit=50):
                 """
                 SELECT *
                 FROM medicine_alert_action_logs
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY created_at DESC, id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (group_id, limit),
             ).fetchall()
@@ -932,7 +936,7 @@ def list_medicine_alert_action_logs(group_id=None, limit=50):
                 SELECT *
                 FROM medicine_alert_action_logs
                 ORDER BY created_at DESC, id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (limit,),
             ).fetchall()
@@ -949,7 +953,7 @@ def reserve_appointment_alert(alert):
             """
             SELECT id
             FROM appointments
-            WHERE id = ? AND group_id = ?
+            WHERE id = %s AND group_id = %s
             """,
             (alert["appointment_id"], alert["group_id"]),
         ).fetchone()
@@ -958,7 +962,7 @@ def reserve_appointment_alert(alert):
 
         cursor = connection.execute(
             """
-            INSERT OR IGNORE INTO appointment_alert_logs (
+            INSERT IGNORE INTO appointment_alert_logs (
                 group_id,
                 appointment_id,
                 alert_key,
@@ -970,7 +974,7 @@ def reserve_appointment_alert(alert):
                 status,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 alert["group_id"],
@@ -1000,8 +1004,8 @@ def update_appointment_alert_log(alert_log_id, status, error=None):
         connection.execute(
             """
             UPDATE appointment_alert_logs
-            SET status = ?, error = ?, sent_at = ?
-            WHERE id = ?
+            SET status = %s, error = %s, sent_at = %s
+            WHERE id = %s
             """,
             (status, error, sent_at, alert_log_id),
         )
@@ -1019,9 +1023,9 @@ def list_appointment_alert_logs(group_id=None, limit=50):
                 FROM appointment_alert_logs
                 INNER JOIN appointments
                     ON appointments.id = appointment_alert_logs.appointment_id
-                WHERE appointment_alert_logs.group_id = ?
+                WHERE appointment_alert_logs.group_id = %s
                 ORDER BY appointment_alert_logs.created_at DESC, appointment_alert_logs.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (group_id, limit),
             ).fetchall()
@@ -1033,7 +1037,7 @@ def list_appointment_alert_logs(group_id=None, limit=50):
                 INNER JOIN appointments
                     ON appointments.id = appointment_alert_logs.appointment_id
                 ORDER BY appointment_alert_logs.created_at DESC, appointment_alert_logs.id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (limit,),
             ).fetchall()
@@ -1062,7 +1066,7 @@ def record_appointment_alert_action(data):
                 created_at,
                 raw_payload
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 data.get("alert_log_id"),
@@ -1090,9 +1094,9 @@ def list_appointment_alert_action_logs(group_id=None, limit=50):
                 """
                 SELECT *
                 FROM appointment_alert_action_logs
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY created_at DESC, id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (group_id, limit),
             ).fetchall()
@@ -1102,7 +1106,7 @@ def list_appointment_alert_action_logs(group_id=None, limit=50):
                 SELECT *
                 FROM appointment_alert_action_logs
                 ORDER BY created_at DESC, id DESC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (limit,),
             ).fetchall()
@@ -1128,7 +1132,7 @@ def save_ocr_result(group_id, result, image_path=None):
                 image_path,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 group_id,
@@ -1153,7 +1157,7 @@ def list_ocr_results(group_id=None):
                 """
                 SELECT *
                 FROM ocr_results
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY created_at DESC, id DESC
                 """,
                 (group_id,),
@@ -1192,7 +1196,7 @@ def save_carebot_assessment(data):
                 responses_json,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 data.get("group_id"),
@@ -1213,12 +1217,12 @@ def list_carebot_assessments(group_id=None, line_user_ids=None):
 
     with get_connection() as connection:
         if group_id and line_user_ids:
-            placeholders = ", ".join("?" for _ in line_user_ids)
+            placeholders = ", ".join("%s" for _ in line_user_ids)
             rows = connection.execute(
                 f"""
                 SELECT *
                 FROM carebot_assessments
-                WHERE group_id = ? OR line_user_id IN ({placeholders})
+                WHERE group_id = %s OR line_user_id IN ({placeholders})
                 ORDER BY created_at DESC, id DESC
                 """,
                 (group_id, *line_user_ids),
@@ -1228,13 +1232,13 @@ def list_carebot_assessments(group_id=None, line_user_ids=None):
                 """
                 SELECT *
                 FROM carebot_assessments
-                WHERE group_id = ?
+                WHERE group_id = %s
                 ORDER BY created_at DESC, id DESC
                 """,
                 (group_id,),
             ).fetchall()
         elif line_user_ids:
-            placeholders = ", ".join("?" for _ in line_user_ids)
+            placeholders = ", ".join("%s" for _ in line_user_ids)
             rows = connection.execute(
                 f"""
                 SELECT *
@@ -1278,7 +1282,7 @@ def save_carebot_chat_log(data):
                 context_json,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             """,
             (
                 data.get("group_id"),
@@ -1299,14 +1303,14 @@ def list_carebot_chat_logs(group_id=None, line_user_ids=None, limit=100):
     params = []
     where = ""
     if group_id and line_user_ids:
-        placeholders = ", ".join("?" for _ in line_user_ids)
-        where = f"WHERE group_id = ? OR line_user_id IN ({placeholders})"
+        placeholders = ", ".join("%s" for _ in line_user_ids)
+        where = f"WHERE group_id = %s OR line_user_id IN ({placeholders})"
         params = [group_id, *line_user_ids]
     elif group_id:
-        where = "WHERE group_id = ?"
+        where = "WHERE group_id = %s"
         params = [group_id]
     elif line_user_ids:
-        placeholders = ", ".join("?" for _ in line_user_ids)
+        placeholders = ", ".join("%s" for _ in line_user_ids)
         where = f"WHERE line_user_id IN ({placeholders})"
         params = list(line_user_ids)
 
@@ -1317,7 +1321,7 @@ def list_carebot_chat_logs(group_id=None, line_user_ids=None, limit=100):
             FROM carebot_chat_logs
             {where}
             ORDER BY created_at DESC, id DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (*params, int(limit)),
         ).fetchall()

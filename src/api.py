@@ -130,7 +130,7 @@ from linebot.exceptions import (
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
 ROOT_DIR = Path(__file__).resolve().parents[1]
-SYMPTOM_DB_PATH = os.environ.get("CHATBOT_DB", str(ROOT_DIR / "data" / "symptom_chatbot.sqlite3"))
+SYMPTOM_DB_URL = os.environ.get("DATABASE_URL", "").strip()
 SYMPTOM_DIR = ROOT_DIR / "src" / "symptoms"
 _symptom_engine = None
 
@@ -138,7 +138,7 @@ _symptom_engine = None
 def get_symptom_engine():
     global _symptom_engine
     if _symptom_engine is None:
-        symptom_db = ChatDatabase(SYMPTOM_DB_PATH)
+        symptom_db = ChatDatabase(SYMPTOM_DB_URL)
         symptom_corpus = EmsCorpus(SYMPTOM_DIR)
         symptom_llm = OpenAIJsonClient()
         _symptom_engine = ChatEngine(symptom_db, symptom_corpus, symptom_llm)
@@ -170,7 +170,7 @@ start_appointment_alert_worker(line_bot_api, app.logger)
 
 @app.route('/')
 def home():
-    return abort(404)
+    return redirect(url_for("carebot"))
 
 # TEST
 # TEST
@@ -1759,10 +1759,15 @@ def group_has_registered_members(group_id):
 ###########################
 # TODO USER MESSAGE HANDLER
 
-@app.route("/callback", methods=['POST'])
+@app.route("/callback", methods=["GET", "POST"])
 def callback():
+    if request.method == "GET":
+        return "LINE webhook endpoint is ready"
+
     # get X-Line-Signature header value
-    signature = request.headers['X-Line-Signature']
+    signature = request.headers.get("X-Line-Signature")
+    if not signature:
+        abort(400)
 
     # get request body as text
     body = request.get_data(as_text=True)
