@@ -1,7 +1,8 @@
 .venv
 .env
-.env.example
 /__pycache__
 /data
 test.json
 /src/__pycache__
+/static/uploads
+/image

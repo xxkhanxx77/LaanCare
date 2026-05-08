@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Register Medicines</title>
+    <title>MedGuard AI</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='medicine.css') }}">
 </head>
@@ -11,201 +11,669 @@
     <main class="page-shell">
         <section class="register-panel medicine-panel" aria-labelledby="medicine-title">
             <div class="brand-strip">
-                <div class="brand-mark medicine-mark" aria-hidden="true">+</div>
+                <div class="brand-mark medicine-mark" aria-hidden="true">AI</div>
                 <div>
-                    <p class="eyebrow">Pill Care</p>
-                    <h1 id="medicine-title">ลงทะเบียนยา</h1>
+                    <p class="eyebrow">MedGuard AI</p>
+                    <h1 id="medicine-title">วิเคราะห์ข้อมูลสุขภาพ</h1>
                 </div>
             </div>
 
-            <div class="group-badge">
-                <span>Group ID</span>
-                <strong>{{ group_id }}</strong>
-            </div>
+            <input type="hidden" id="group-id" value="{{ group_id }}">
+            <div id="message-panel" class="error-panel status-panel" role="status" hidden></div>
 
-            {% if errors %}
-                <div class="error-panel" role="alert">
-                    {% for error in errors %}
-                        <p>{{ error }}</p>
-                    {% endfor %}
+            <section class="ocr-panel" aria-labelledby="ocr-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Universal Health OCR</p>
+                        <h2 id="ocr-title">ส่งรูปให้ AI อ่านผล</h2>
+                    </div>
+                    <div class="type-pills" aria-label="ชนิดรูปภาพที่รองรับ">
+                        <span>ยา</span>
+                        <span>ความดัน</span>
+                        <span>น้ำตาล</span>
+                        <span>อาหาร</span>
+                        <span>ใบนัด</span>
+                    </div>
                 </div>
-            {% endif %}
 
-            <form method="post" enctype="multipart/form-data" class="medicine-form" novalidate>
-                <input type="hidden" name="group_id" value="{{ group_id }}">
+                <form id="ocr-form" class="ocr-form" enctype="multipart/form-data">
+                    <div class="medicine-layout">
+                        <div class="upload-field">
+                            <label class="field">
+                                <span>รูปภาพสุขภาพ</span>
+                                <input id="ocr-file" class="native-file-input" type="file" name="file" accept="image/*" required>
+                            </label>
+                            <span id="ocr-preview" class="upload-preview">
+                                <span class="upload-plus" aria-hidden="true">+</span>
+                                <span>ยังไม่ได้เลือกรูป</span>
+                            </span>
+                        </div>
 
-                <div id="medicine-list" class="medicine-list">
-                    {% for item in items %}
-                        <article class="medicine-item" data-medicine-item>
-                            <header class="medicine-item-header">
-                                <div>
-                                    <p class="item-kicker">Medicine</p>
-                                    <h2>รายการที่ <span data-item-number>{{ loop.index }}</span></h2>
+                        <div class="ocr-copy">
+                            <div class="feature-list">
+                                <div class="feature-line">
+                                    <strong>Medicine</strong>
+                                    <span>ชื่อยา, จำนวน, ช่วงเวลาทาน, ก่อนหรือหลังอาหาร</span>
                                 </div>
-                                <button class="icon-button remove-button" type="button" data-remove-item aria-label="ลบรายการยา">
-                                    <span aria-hidden="true">x</span>
-                                </button>
-                            </header>
-
-                            <div class="medicine-layout">
-                                <div class="upload-field">
-                                    <label class="field">
-                                        <span>รูปยา</span>
-                                        <input class="native-file-input" type="file" name="medicine_image[]" accept="image/*" data-image-input>
-                                    </label>
-                                    <span class="upload-preview" data-image-preview>
-                                        <span class="upload-plus" aria-hidden="true">+</span>
-                                        <span>ยังไม่ได้เลือกรูป</span>
-                                    </span>
+                                <div class="feature-line">
+                                    <strong>Vitals</strong>
+                                    <span>ค่าความดัน ชีพจร และค่าน้ำตาล mg/dL</span>
                                 </div>
-
-                                <div class="medicine-fields">
-                                    <label class="field">
-                                        <span>ชื่อยา</span>
-                                        <input name="medicine_name[]" value="{{ item.get('medicine_name', '') }}" required>
-                                    </label>
-
-                                    <label class="field">
-                                        <span>ขนาดยา / วิธีทาน</span>
-                                        <input name="dosage[]" value="{{ item.get('dosage', '') }}" placeholder="เช่น 1 เม็ด หลังอาหาร">
-                                    </label>
-
-                                    <label class="field">
-                                        <span>เวลาที่ต้องทาน</span>
-                                        <input name="take_time[]" value="{{ item.get('take_time', '') }}" placeholder="เช่น 08:00, 20:00">
-                                    </label>
-
-                                    <label class="field">
-                                        <span>หมายเหตุ</span>
-                                        <input name="instruction[]" value="{{ item.get('instruction', '') }}" placeholder="เช่น ห้ามทานตอนท้องว่าง">
-                                    </label>
+                                <div class="feature-line">
+                                    <strong>Food & Appointment</strong>
+                                    <span>แคลอรี่ คำแนะนำโภชนาการ และข้อมูลใบนัดหมอ</span>
                                 </div>
                             </div>
-                        </article>
-                    {% endfor %}
+
+                            <button id="ocr-submit" class="submit-button" type="submit">
+                                <span aria-hidden="true">✓</span>
+                                วิเคราะห์รูปภาพ
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </section>
+
+            <section id="ocr-result-panel" class="result-panel" aria-labelledby="result-title" hidden>
+                <div class="section-header">
+                    <div>
+                        <p id="result-type" class="item-kicker">OCR Result</p>
+                        <h2 id="result-title">ผลการวิเคราะห์</h2>
+                    </div>
+                    <span id="result-badge" class="result-badge"></span>
                 </div>
 
-                <div class="medicine-actions">
-                    <button class="secondary-button" type="button" id="add-medicine-button">
-                        <span aria-hidden="true">+</span>
-                        เพิ่มรายการยา
-                    </button>
+                <div id="result-summary" class="result-summary"></div>
+                <div id="result-data" class="result-grid"></div>
+                <div id="interaction-report" class="interaction-report" hidden></div>
 
+                <form id="save-medicine-form" class="save-medicine-form" hidden>
+                    <input type="hidden" name="image_path">
+                    <div class="field-grid two-columns">
+                        <label class="field">
+                            <span>ชื่อยา</span>
+                            <input name="medicine_name" required>
+                        </label>
+                        <label class="field">
+                            <span>จำนวน / ขนาดยา</span>
+                            <input name="dosage">
+                        </label>
+                    </div>
+                    <div class="field-grid two-columns">
+                        <label class="field">
+                            <span>ช่วงเวลาทาน</span>
+                            <input name="take_time">
+                        </label>
+                        <label class="field">
+                            <span>หมายเหตุ</span>
+                            <input name="instruction">
+                        </label>
+                    </div>
                     <button class="submit-button" type="submit">
                         <span aria-hidden="true">✓</span>
-                        บันทึกรายการยา
+                        บันทึกเป็นรายการยา
                     </button>
+                </form>
+            </section>
+
+            <section class="medicine-inventory" aria-labelledby="inventory-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Medicine Management</p>
+                        <h2 id="inventory-title">รายการยาปัจจุบัน</h2>
+                    </div>
+                    <button id="refresh-medicines" class="secondary-button compact-button" type="button">รีเฟรช</button>
                 </div>
-            </form>
+
+                <div id="medicine-list" class="medicine-list"></div>
+                <p id="empty-medicines" class="empty-state" hidden>ยังไม่มีรายการยาในกลุ่มนี้</p>
+            </section>
+
+            <section class="medicine-alerts" aria-labelledby="alert-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Proactive Alerts</p>
+                        <h2 id="alert-title">ตารางแจ้งเตือนกินยา</h2>
+                    </div>
+                    <div class="alert-actions">
+                        <button id="run-alerts" class="secondary-button compact-button" type="button">เช็กเวลานี้</button>
+                        <button id="refresh-alerts" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                    </div>
+                </div>
+
+                <div id="alert-schedule-list" class="alert-schedule-list"></div>
+                <p id="empty-alerts" class="empty-state" hidden>ยังไม่มีรายการยาที่แปลงเป็นเวลาแจ้งเตือนได้</p>
+            </section>
+
+            <section class="appointment-inventory" aria-labelledby="appointment-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Appointment Management</p>
+                        <h2 id="appointment-title">รายการนัดหมาย</h2>
+                    </div>
+                    <button id="refresh-appointments" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                </div>
+
+                <div id="appointment-list" class="medicine-list"></div>
+                <p id="empty-appointments" class="empty-state" hidden>ยังไม่มีรายการนัดหมายในกลุ่มนี้</p>
+            </section>
+
+            <section class="appointment-alerts" aria-labelledby="appointment-alert-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Appointment Alerts</p>
+                        <h2 id="appointment-alert-title">ตารางแจ้งเตือนนัดหมาย</h2>
+                    </div>
+                    <div class="alert-actions">
+                        <button id="run-appointment-alerts" class="secondary-button compact-button" type="button">เช็กเวลานี้</button>
+                        <button id="refresh-appointment-alerts" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                    </div>
+                </div>
+
+                <div id="appointment-alert-schedule-list" class="alert-schedule-list"></div>
+                <p id="empty-appointment-alerts" class="empty-state" hidden>ยังไม่มีนัดหมายที่แปลงเป็นเวลาแจ้งเตือนได้</p>
+            </section>
         </section>
     </main>
 
-    <template id="medicine-item-template">
-        <article class="medicine-item" data-medicine-item>
-            <header class="medicine-item-header">
-                <div>
-                    <p class="item-kicker">Medicine</p>
-                    <h2>รายการที่ <span data-item-number>1</span></h2>
-                </div>
-                <button class="icon-button remove-button" type="button" data-remove-item aria-label="ลบรายการยา">
-                    <span aria-hidden="true">x</span>
-                </button>
-            </header>
-
-            <div class="medicine-layout">
-                <div class="upload-field">
-                    <label class="field">
-                        <span>รูปยา</span>
-                        <input class="native-file-input" type="file" name="medicine_image[]" accept="image/*" data-image-input>
-                    </label>
-                    <span class="upload-preview" data-image-preview>
-                        <span class="upload-plus" aria-hidden="true">+</span>
-                        <span>ยังไม่ได้เลือกรูป</span>
-                    </span>
-                </div>
-
-                <div class="medicine-fields">
-                    <label class="field">
-                        <span>ชื่อยา</span>
-                        <input name="medicine_name[]" required>
-                    </label>
-
-                    <label class="field">
-                        <span>ขนาดยา / วิธีทาน</span>
-                        <input name="dosage[]" placeholder="เช่น 1 เม็ด หลังอาหาร">
-                    </label>
-
-                    <label class="field">
-                        <span>เวลาที่ต้องทาน</span>
-                        <input name="take_time[]" placeholder="เช่น 08:00, 20:00">
-                    </label>
-
-                    <label class="field">
-                        <span>หมายเหตุ</span>
-                        <input name="instruction[]" placeholder="เช่น ห้ามทานตอนท้องว่าง">
-                    </label>
-                </div>
-            </div>
-        </article>
-    </template>
-
     <script>
-        const list = document.getElementById('medicine-list');
-        const template = document.getElementById('medicine-item-template');
-        const addButton = document.getElementById('add-medicine-button');
+        const groupId = document.getElementById('group-id').value;
+        const ocrForm = document.getElementById('ocr-form');
+        const ocrFile = document.getElementById('ocr-file');
+        const ocrPreview = document.getElementById('ocr-preview');
+        const ocrSubmit = document.getElementById('ocr-submit');
+        const messagePanel = document.getElementById('message-panel');
+        const resultPanel = document.getElementById('ocr-result-panel');
+        const resultType = document.getElementById('result-type');
+        const resultTitle = document.getElementById('result-title');
+        const resultBadge = document.getElementById('result-badge');
+        const resultSummary = document.getElementById('result-summary');
+        const resultData = document.getElementById('result-data');
+        const interactionReport = document.getElementById('interaction-report');
+        const saveMedicineForm = document.getElementById('save-medicine-form');
+        const medicineList = document.getElementById('medicine-list');
+        const emptyMedicines = document.getElementById('empty-medicines');
+        const refreshMedicines = document.getElementById('refresh-medicines');
+        const alertScheduleList = document.getElementById('alert-schedule-list');
+        const emptyAlerts = document.getElementById('empty-alerts');
+        const refreshAlerts = document.getElementById('refresh-alerts');
+        const runAlerts = document.getElementById('run-alerts');
+        const appointmentList = document.getElementById('appointment-list');
+        const emptyAppointments = document.getElementById('empty-appointments');
+        const refreshAppointments = document.getElementById('refresh-appointments');
+        const appointmentAlertScheduleList = document.getElementById('appointment-alert-schedule-list');
+        const emptyAppointmentAlerts = document.getElementById('empty-appointment-alerts');
+        const refreshAppointmentAlerts = document.getElementById('refresh-appointment-alerts');
+        const runAppointmentAlerts = document.getElementById('run-appointment-alerts');
 
-        function resetPreview(preview) {
-            preview.innerHTML = '<span class="upload-plus" aria-hidden="true">+</span><span>ยังไม่ได้เลือกรูป</span>';
-            preview.style.backgroundImage = '';
+        const detectedLabels = {
+            medicine: 'ยา',
+            blood_pressure: 'ความดัน',
+            blood_glucose: 'น้ำตาล',
+            food: 'อาหาร',
+            appointment: 'ใบนัดหมอ',
+        };
+
+        const fieldLabels = {
+            'medication name': 'ชื่อยา',
+            medication_name: 'ชื่อยา',
+            number: 'จำนวน',
+            frequency: 'ช่วงเวลาทาน',
+            'time of taking': 'ก่อน/หลังอาหาร',
+            systolic: 'ค่าบน',
+            diastolic: 'ค่าล่าง',
+            pulse: 'ชีพจร',
+            value: 'ค่า',
+            unit: 'หน่วย',
+            context: 'บริบท',
+            dish_name: 'เมนู',
+            calories: 'แคลอรี่',
+            protein: 'โปรตีน',
+            fat: 'ไขมัน',
+            carbs: 'คาร์บ',
+            rating: 'คะแนนสุขภาพ',
+            advice: 'คำแนะนำ',
+            hospital: 'โรงพยาบาล',
+            department: 'แผนก',
+            doctor: 'แพทย์',
+            date: 'วันที่',
+            time: 'เวลา',
+            preparation: 'การเตรียมตัว',
+            reason: 'เหตุผลนัด',
+        };
+
+        function setMessage(message, type = 'error') {
+            messagePanel.hidden = !message;
+            messagePanel.classList.toggle('success-message', type === 'success');
+            messagePanel.classList.toggle('error-message', type !== 'success');
+            messagePanel.textContent = message || '';
         }
 
-        function renumberItems() {
-            const items = list.querySelectorAll('[data-medicine-item]');
-            items.forEach((item, index) => {
-                item.querySelector('[data-item-number]').textContent = index + 1;
-                const removeButton = item.querySelector('[data-remove-item]');
-                removeButton.disabled = items.length === 1;
+        function resetPreview() {
+            ocrPreview.innerHTML = '<span class="upload-plus" aria-hidden="true">+</span><span>ยังไม่ได้เลือกรูป</span>';
+            ocrPreview.style.backgroundImage = '';
+        }
+
+        function formatValue(value) {
+            if (Array.isArray(value)) {
+                return value.join(', ');
+            }
+
+            if (value === null || value === undefined || value === '') {
+                return '-';
+            }
+
+            return String(value);
+        }
+
+        function renderResult(payload) {
+            const result = payload.result || {};
+            const data = result.data || {};
+            const detectedType = result.detected_type || 'unknown';
+            const label = detectedLabels[detectedType] || detectedType;
+
+            resultPanel.hidden = false;
+            resultType.textContent = 'OCR Result';
+            resultTitle.textContent = `ผลการวิเคราะห์${label}`;
+            resultBadge.textContent = label;
+            resultSummary.textContent = result.interpretation || 'ไม่มีข้อความสรุปผล';
+
+            resultData.innerHTML = '';
+            Object.entries(data).forEach(([key, value]) => {
+                const item = document.createElement('div');
+                item.className = 'result-item';
+                item.innerHTML = `<span>${fieldLabels[key] || key}</span><strong></strong>`;
+                item.querySelector('strong').textContent = formatValue(value);
+                resultData.appendChild(item);
             });
+
+            interactionReport.hidden = !result.interaction_report;
+            interactionReport.textContent = result.interaction_report || '';
+
+            hydrateMedicineForm(detectedType, data, result, payload.image_path);
+            if (detectedType === 'appointment') {
+                setMessage(payload.appointment_id ? 'บันทึกรายการนัดหมายแล้ว' : 'วิเคราะห์ใบนัดสำเร็จ', 'success');
+                loadAppointments();
+                loadAppointmentAlertSchedule();
+            }
         }
 
-        function bindItem(item) {
-            const removeButton = item.querySelector('[data-remove-item]');
-            const input = item.querySelector('[data-image-input]');
-            const preview = item.querySelector('[data-image-preview]');
+        function hydrateMedicineForm(detectedType, data, result, imagePath) {
+            saveMedicineForm.hidden = detectedType !== 'medicine';
+            if (detectedType !== 'medicine') {
+                return;
+            }
 
-            removeButton.addEventListener('click', () => {
-                if (list.querySelectorAll('[data-medicine-item]').length === 1) {
-                    return;
+            const frequency = formatValue(data.frequency);
+            const takeTiming = formatValue(data['time of taking']);
+            saveMedicineForm.elements.medicine_name.value = data['medication name'] || data.medication_name || '';
+            saveMedicineForm.elements.dosage.value = data.number ? String(data.number) : '';
+            saveMedicineForm.elements.take_time.value = [frequency, takeTiming].filter((value) => value && value !== '-').join(' / ');
+            saveMedicineForm.elements.instruction.value = [result.interpretation, result.interaction_report].filter(Boolean).join(' | ');
+            saveMedicineForm.elements.image_path.value = imagePath || '';
+        }
+
+        async function submitOcr(event) {
+            event.preventDefault();
+            setMessage('');
+
+            if (!ocrFile.files?.[0]) {
+                setMessage('กรุณาเลือกรูปภาพ');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('group_id', groupId);
+            formData.append('file', ocrFile.files[0]);
+
+            ocrSubmit.disabled = true;
+            ocrSubmit.lastChild.textContent = ' กำลังวิเคราะห์...';
+
+            try {
+                const response = await fetch('/api/health-ocr', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'วิเคราะห์รูปภาพไม่สำเร็จ');
                 }
 
-                item.remove();
-                renumberItems();
-            });
+                renderResult(payload);
+                setMessage('วิเคราะห์รูปภาพสำเร็จ', 'success');
+            } catch (error) {
+                setMessage(error.message);
+            } finally {
+                ocrSubmit.disabled = false;
+                ocrSubmit.lastChild.textContent = ' วิเคราะห์รูปภาพ';
+            }
+        }
 
-            input.addEventListener('change', () => {
-                const file = input.files?.[0];
-                if (!file) {
-                    resetPreview(preview);
-                    return;
+        async function saveMedicine(event) {
+            event.preventDefault();
+            setMessage('');
+
+            const payload = {
+                group_id: groupId,
+                medicine_name: saveMedicineForm.elements.medicine_name.value,
+                dosage: saveMedicineForm.elements.dosage.value,
+                take_time: saveMedicineForm.elements.take_time.value,
+                instruction: saveMedicineForm.elements.instruction.value,
+                image_path: saveMedicineForm.elements.image_path.value,
+            };
+
+            try {
+                const response = await fetch('/api/medicines', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'บันทึกรายการยาไม่สำเร็จ');
                 }
 
-                const imageUrl = URL.createObjectURL(file);
-                preview.innerHTML = '<span class="file-name"></span>';
-                preview.querySelector('.file-name').textContent = file.name;
-                preview.style.backgroundImage = `linear-gradient(rgba(20, 48, 31, 0.1), rgba(20, 48, 31, 0.42)), url("${imageUrl}")`;
+                setMessage('บันทึกรายการยาแล้ว', 'success');
+                await loadMedicines();
+                await loadAlertSchedule();
+            } catch (error) {
+                setMessage(error.message);
+            }
+        }
+
+        async function loadMedicines() {
+            const response = await fetch(`/api/medicines?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const medicines = payload.medicines || [];
+
+            medicineList.innerHTML = '';
+            emptyMedicines.hidden = medicines.length > 0;
+
+            medicines.forEach((medicine) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item inventory-item';
+                item.innerHTML = `
+                    ${medicine.image_path ? `<img class="medicine-thumb" src="${medicine.image_path}" alt="">` : '<span class="medicine-thumb thumb-placeholder" aria-hidden="true">Rx</span>'}
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Medicine</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                    </div>
+                    <button class="icon-button remove-button" type="button" aria-label="ลบรายการยา">
+                        <span aria-hidden="true">x</span>
+                    </button>
+                `;
+                item.querySelector('h3').textContent = medicine.medicine_name;
+                item.querySelector('.medicine-meta').textContent = [
+                    medicine.dosage,
+                    medicine.take_time,
+                    medicine.instruction,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('button').addEventListener('click', () => removeMedicine(medicine.id));
+                medicineList.appendChild(item);
             });
         }
 
-        addButton.addEventListener('click', () => {
-            const clone = template.content.firstElementChild.cloneNode(true);
-            list.appendChild(clone);
-            bindItem(clone);
-            renumberItems();
-            clone.querySelector('input[name="medicine_name[]"]').focus();
+        async function removeMedicine(medicineId) {
+            setMessage('');
+
+            try {
+                const response = await fetch(`/api/medicines/${medicineId}?group_id=${encodeURIComponent(groupId)}`, {
+                    method: 'DELETE',
+                    cache: 'no-store',
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'ลบรายการยาไม่สำเร็จ');
+                }
+
+                setMessage('ลบรายการยาแล้ว', 'success');
+                await loadMedicines();
+                await loadAlertSchedule();
+            } catch (error) {
+                setMessage(error.message);
+            }
+        }
+
+        async function loadAlertSchedule() {
+            const response = await fetch(`/api/medicine-alerts/schedule?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const schedule = payload.schedule || [];
+
+            alertScheduleList.innerHTML = '';
+            emptyAlerts.hidden = schedule.length > 0;
+
+            schedule.forEach((alert) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item alert-schedule-item';
+                item.innerHTML = `
+                    <div class="alert-time">
+                        <strong></strong>
+                        <span></span>
+                    </div>
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Medicine Alert</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta alert-targets"></p>
+                    </div>
+                `;
+                item.querySelector('.alert-time strong').textContent = alert.time || '-';
+                item.querySelector('.alert-time span').textContent = alert.slot_label || '-';
+                item.querySelector('h3').textContent = alert.medicine_name || '-';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    alert.dosage,
+                    alert.take_time,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('.alert-targets').textContent = [
+                    `Patient: ${formatNames(alert.patients)}`,
+                    `Caregiver: ${formatNames(alert.caregivers)}`,
+                ].join(' · ');
+                alertScheduleList.appendChild(item);
+            });
+        }
+
+        function formatNames(members) {
+            const names = (members || []).map((member) => member.name).filter(Boolean);
+            return names.length ? names.join(', ') : '-';
+        }
+
+        async function runDueAlerts() {
+            setMessage('');
+            runAlerts.disabled = true;
+            runAlerts.textContent = 'กำลังเช็ก...';
+
+            try {
+                const response = await fetch('/api/medicine-alerts/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: groupId }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'เช็กแจ้งเตือนไม่สำเร็จ');
+                }
+
+                const sentCount = (payload.results || []).filter((item) => item.status === 'sent').length;
+                const dueCount = (payload.alerts || []).length;
+                setMessage(
+                    dueCount ? `พบ ${dueCount} alert ที่ถึงเวลา ส่งสำเร็จ ${sentCount} รายการ` : 'ตอนนี้ยังไม่มี alert ที่ถึงเวลา',
+                    'success',
+                );
+            } catch (error) {
+                setMessage(error.message);
+            } finally {
+                runAlerts.disabled = false;
+                runAlerts.textContent = 'เช็กเวลานี้';
+            }
+        }
+
+        async function loadAppointments() {
+            const response = await fetch(`/api/appointments?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const appointments = payload.appointments || [];
+
+            appointmentList.innerHTML = '';
+            emptyAppointments.hidden = appointments.length > 0;
+
+            appointments.forEach((appointment) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item inventory-item';
+                item.innerHTML = `
+                    ${appointment.image_path ? `<img class="medicine-thumb" src="${appointment.image_path}" alt="">` : '<span class="medicine-thumb thumb-placeholder" aria-hidden="true">AP</span>'}
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Appointment</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta"></p>
+                    </div>
+                    <button class="icon-button remove-button" type="button" aria-label="ลบนัดหมาย">
+                        <span aria-hidden="true">x</span>
+                    </button>
+                `;
+                item.querySelector('h3').textContent = appointment.hospital || 'ใบนัดหมอ';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    appointment.appointment_date,
+                    appointment.appointment_time,
+                    appointment.department,
+                    appointment.doctor,
+                ].filter(Boolean).join(' · ');
+                item.querySelectorAll('.medicine-meta')[1].textContent = [
+                    appointment.preparation,
+                    appointment.reason,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('button').addEventListener('click', () => removeAppointment(appointment.id));
+                appointmentList.appendChild(item);
+            });
+        }
+
+        async function removeAppointment(appointmentId) {
+            setMessage('');
+
+            try {
+                const response = await fetch(`/api/appointments/${appointmentId}?group_id=${encodeURIComponent(groupId)}`, {
+                    method: 'DELETE',
+                    cache: 'no-store',
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'ลบนัดหมายไม่สำเร็จ');
+                }
+
+                setMessage('ลบนัดหมายแล้ว', 'success');
+                await loadAppointments();
+                await loadAppointmentAlertSchedule();
+            } catch (error) {
+                setMessage(error.message);
+            }
+        }
+
+        async function loadAppointmentAlertSchedule() {
+            const response = await fetch(`/api/appointment-alerts/schedule?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const schedule = payload.schedule || [];
+
+            appointmentAlertScheduleList.innerHTML = '';
+            emptyAppointmentAlerts.hidden = schedule.length > 0;
+
+            schedule.forEach((alert) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item alert-schedule-item';
+                item.innerHTML = `
+                    <div class="alert-time">
+                        <strong></strong>
+                        <span></span>
+                    </div>
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Appointment Alert</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta alert-targets"></p>
+                    </div>
+                `;
+                const scheduled = alert.scheduled_for ? new Date(alert.scheduled_for) : null;
+                item.querySelector('.alert-time strong').textContent = scheduled ? scheduled.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-';
+                item.querySelector('.alert-time span').textContent = alert.test_mode ? 'ทดสอบ' : 'ก่อนนัด';
+                item.querySelector('h3').textContent = alert.hospital || 'ใบนัดหมอ';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    alert.appointment_display,
+                    alert.department,
+                    alert.doctor,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('.alert-targets').textContent = `Patient: ${formatNames(alert.patients)}`;
+                appointmentAlertScheduleList.appendChild(item);
+            });
+        }
+
+        async function runDueAppointmentAlerts() {
+            setMessage('');
+            runAppointmentAlerts.disabled = true;
+            runAppointmentAlerts.textContent = 'กำลังเช็ก...';
+
+            try {
+                const response = await fetch('/api/appointment-alerts/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: groupId }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'เช็กแจ้งเตือนนัดหมายไม่สำเร็จ');
+                }
+
+                const sentCount = (payload.results || []).filter((item) => item.status === 'sent').length;
+                const dueCount = (payload.alerts || []).length;
+                setMessage(
+                    dueCount ? `พบ ${dueCount} appointment alert ที่ถึงเวลา ส่งสำเร็จ ${sentCount} รายการ` : 'ตอนนี้ยังไม่มี appointment alert ที่ถึงเวลา',
+                    'success',
+                );
+            } catch (error) {
+                setMessage(error.message);
+            } finally {
+                runAppointmentAlerts.disabled = false;
+                runAppointmentAlerts.textContent = 'เช็กเวลานี้';
+            }
+        }
+
+        ocrFile.addEventListener('change', () => {
+            const file = ocrFile.files?.[0];
+            if (!file) {
+                resetPreview();
+                return;
+            }
+
+            const imageUrl = URL.createObjectURL(file);
+            ocrPreview.innerHTML = '<span class="file-name"></span>';
+            ocrPreview.querySelector('.file-name').textContent = file.name;
+            ocrPreview.style.backgroundImage = `linear-gradient(rgba(20, 48, 31, 0.1), rgba(20, 48, 31, 0.42)), url("${imageUrl}")`;
         });
 
-        list.querySelectorAll('[data-medicine-item]').forEach(bindItem);
-        renumberItems();
+        ocrForm.addEventListener('submit', submitOcr);
+        saveMedicineForm.addEventListener('submit', saveMedicine);
+        refreshMedicines.addEventListener('click', loadMedicines);
+        refreshAlerts.addEventListener('click', loadAlertSchedule);
+        runAlerts.addEventListener('click', runDueAlerts);
+        refreshAppointments.addEventListener('click', loadAppointments);
+        refreshAppointmentAlerts.addEventListener('click', loadAppointmentAlertSchedule);
+        runAppointmentAlerts.addEventListener('click', runDueAppointmentAlerts);
+        loadMedicines();
+        loadAlertSchedule();
+        loadAppointments();
+        loadAppointmentAlertSchedule();
     </script>
 </body>
 </html>

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Symptom Check-in</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='symptom_chat.css') }}">
+</head>
+<body>
+    <main class="symptom-page">
+        <header class="symptom-header">
+            <div class="brand-mark">EMS</div>
+            <div>
+                <p class="eyebrow">SYMPTOM CHECK-IN</p>
+                <h1>เช็กอินอาการผิดปกติ</h1>
+                <p class="subtitle">คัดกรองความเสี่ยงเบื้องต้นจากชุดความรู้ EMS และบันทึก alert flow สำหรับผู้ดูแล</p>
+            </div>
+        </header>
+
+        <section class="workspace">
+            <div class="chat-panel">
+                <div class="chat-toolbar">
+                    <div>
+                        <p class="eyebrow">LINE SIMULATOR</p>
+                        <h2>ห้องแชท</h2>
+                    </div>
+                    <button id="reset-button" class="secondary-button" type="button">เริ่มใหม่</button>
+                </div>
+                <div id="messages" class="messages" aria-live="polite"></div>
+                <div id="quick-actions" class="quick-actions"></div>
+                <form id="chat-form" class="chat-form">
+                    <input id="chat-input" class="chat-input" autocomplete="off" placeholder="พิมพ์ เช็กอิน หรือเล่าอาการ เช่น หายใจขัด">
+                    <button class="primary-button" type="submit">ส่ง</button>
+                </form>
+            </div>
+
+            <aside class="side-panel">
+                <section class="status-card">
+                    <p class="eyebrow">STATUS</p>
+                    <dl>
+                        <div>
+                            <dt>Risk</dt>
+                            <dd id="risk-level">-</dd>
+                        </div>
+                        <div>
+                            <dt>Group</dt>
+                            <dd id="group-name">-</dd>
+                        </div>
+                        <div>
+                            <dt>OpenAI</dt>
+                            <dd id="llm-status">-</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="status-card">
+                    <p class="eyebrow">CAREGIVER ALERT</p>
+                    <div id="alerts" class="alert-list muted-text">ยังไม่มี alert</div>
+                </section>
+
+                <section class="status-card">
+                    <p class="eyebrow">KNOWLEDGE RETRIEVED</p>
+                    <div id="knowledge" class="knowledge-box muted-text">ยังไม่มีข้อมูล</div>
+                </section>
+            </aside>
+        </section>
+    </main>
+
+    <script>
+        window.SYMPTOM_CHAT_CONTEXT = {
+            groupId: "{{ group_id }}",
+            lineUserId: "{{ line_user_id }}",
+        };
+    </script>
+    <script src="{{ url_for('static', filename='symptom_chat.js') }}"></script>
+</body>
+</html>
