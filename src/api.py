@@ -60,6 +60,10 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 def home():
     return abort(404)
 
+# TEST
+# TEST
+# TEST
+
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
