@@ -7,3 +7,5 @@ flask
 openai
 pillow
 gunicorn
+pymysql
+cryptography

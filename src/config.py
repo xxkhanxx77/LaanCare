@@ -28,6 +28,7 @@ HOST = os.getenv("HOST", "localhost")
 PORT = int(os.getenv("PORT", "5000"))
 DEBUG = _env_bool("DEBUG", True)
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+DATABASE_URL = os.getenv("DATABASE_URL", "").strip()
 DATABASE_PATH = os.getenv("DATABASE_PATH", os.path.join("data", "registrations.sqlite3"))
 UPLOAD_FOLDER = os.getenv("UPLOAD_FOLDER", os.path.join("static", "uploads"))
 
