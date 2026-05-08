@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register Complete</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
+</head>
+<body>
+    <main class="page-shell success-shell">
+        <section class="register-panel success-panel" aria-labelledby="success-title">
+            <div class="status-icon" aria-hidden="true">✓</div>
+            <p class="eyebrow">Saved</p>
+            <h1 id="success-title">ลงทะเบียนสำเร็จ</h1>
+            <p class="success-copy">ระบบบันทึกข้อมูลของคุณแล้ว</p>
+            <p class="record-id">Registration ID: {{ registration_id }}</p>
+        </section>
+    </main>
+</body>
+</html>

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Medicines Saved</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='medicine.css') }}">
+</head>
+<body>
+    <main class="page-shell success-shell">
+        <section class="register-panel success-panel" aria-labelledby="success-title">
+            <div class="status-icon" aria-hidden="true">✓</div>
+            <p class="eyebrow">Saved</p>
+            <h1 id="success-title">บันทึกรายการยาแล้ว</h1>
+            <p class="success-copy">เพิ่มรายการยา {{ count }} รายการให้ Group ID นี้</p>
+            <p class="record-id">{{ group_id }}</p>
+        </section>
+    </main>
+</body>
+</html>

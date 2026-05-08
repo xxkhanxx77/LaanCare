@@ -1,0 +1,6 @@
+requests
+pandas
+numpy
+line-bot-sdk
+python-dotenv
+flask

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register Care Group</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="register-panel" aria-labelledby="register-title">
+            <div class="brand-strip">
+                <div class="brand-mark" aria-hidden="true">+</div>
+                <div>
+                    <p class="eyebrow">Health Care Group</p>
+                    <h1 id="register-title">ลงทะเบียนสมาชิก</h1>
+                </div>
+            </div>
+
+            <div class="group-badge">
+                <span>Group ID</span>
+                <strong>{{ group_id }}</strong>
+            </div>
+
+            <form method="post" class="register-form" novalidate>
+                <input type="hidden" name="group_id" value="{{ group_id }}">
+                <input type="hidden" name="line_user_id" value="{{ values.get('line_user_id', '') }}">
+
+                <div class="field-grid two-columns">
+                    <label class="field">
+                        <span>ชื่อ</span>
+                        <input name="first_name" value="{{ values.get('first_name', '') }}" autocomplete="given-name" required>
+                        {% if errors.get('first_name') %}<small>{{ errors.first_name }}</small>{% endif %}
+                    </label>
+
+                    <label class="field">
+                        <span>นามสกุล</span>
+                        <input name="last_name" value="{{ values.get('last_name', '') }}" autocomplete="family-name" required>
+                        {% if errors.get('last_name') %}<small>{{ errors.last_name }}</small>{% endif %}
+                    </label>
+                </div>
+
+                <label class="field">
+                    <span>Email</span>
+                    <input type="email" name="email" value="{{ values.get('email', '') }}" autocomplete="email" inputmode="email" required>
+                    {% if errors.get('email') %}<small>{{ errors.email }}</small>{% endif %}
+                </label>
+
+                <label class="field">
+                    <span>เบอร์โทร</span>
+                    <input type="tel" name="phone" value="{{ values.get('phone', '') }}" autocomplete="tel" inputmode="tel" required>
+                    {% if errors.get('phone') %}<small>{{ errors.phone }}</small>{% endif %}
+                </label>
+
+                <div class="field-grid two-columns">
+                    <fieldset class="choice-field">
+                        <legend>เพศ</legend>
+                        <div class="segmented">
+                            <label>
+                                <input type="radio" name="gender" value="female" {% if values.get('gender') == 'female' %}checked{% endif %}>
+                                <span>หญิง</span>
+                            </label>
+                            <label>
+                                <input type="radio" name="gender" value="male" {% if values.get('gender') == 'male' %}checked{% endif %}>
+                                <span>ชาย</span>
+                            </label>
+                            <label>
+                                <input type="radio" name="gender" value="other" {% if values.get('gender') == 'other' %}checked{% endif %}>
+                                <span>อื่นๆ</span>
+                            </label>
+                        </div>
+                        {% if errors.get('gender') %}<small>{{ errors.gender }}</small>{% endif %}
+                    </fieldset>
+
+                    <fieldset class="choice-field">
+                        <legend>Role</legend>
+                        <div class="segmented role-segmented">
+                            <label>
+                                <input type="radio" name="role" value="caregiver" {% if values.get('role', 'caregiver') == 'caregiver' %}checked{% endif %}>
+                                <span>Caregiver</span>
+                            </label>
+                            <label>
+                                <input type="radio" name="role" value="patient" {% if values.get('role') == 'patient' %}checked{% endif %}>
+                                <span>Patient</span>
+                            </label>
+                        </div>
+                        {% if errors.get('role') %}<small>{{ errors.role }}</small>{% endif %}
+                    </fieldset>
+                </div>
+
+                <div id="patient-fields" class="patient-fields">
+                    <div class="field-grid two-columns">
+                        <label class="field">
+                            <span>Height (cm)</span>
+                            <input type="number" step="0.1" min="0" name="height_cm" value="{{ values.get('height_cm', '') }}" inputmode="decimal">
+                            {% if errors.get('height_cm') %}<small>{{ errors.height_cm }}</small>{% endif %}
+                        </label>
+
+                        <label class="field">
+                            <span>Weight (kg)</span>
+                            <input type="number" step="0.1" min="0" name="weight_kg" value="{{ values.get('weight_kg', '') }}" inputmode="decimal">
+                            {% if errors.get('weight_kg') %}<small>{{ errors.weight_kg }}</small>{% endif %}
+                        </label>
+                    </div>
+                </div>
+
+                <button class="submit-button" type="submit">
+                    <span aria-hidden="true">✓</span>
+                    บันทึกข้อมูล
+                </button>
+            </form>
+        </section>
+    </main>
+
+    <script>
+        const roleInputs = document.querySelectorAll('input[name="role"]');
+        const patientFields = document.getElementById('patient-fields');
+
+        function syncPatientFields() {
+            const selectedRole = document.querySelector('input[name="role"]:checked')?.value;
+            patientFields.hidden = selectedRole !== 'patient';
+        }
+
+        roleInputs.forEach((input) => input.addEventListener('change', syncPatientFields));
+        syncPatientFields();
+    </script>
+</body>
+</html>

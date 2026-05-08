@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Register Medicines</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='medicine.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="register-panel medicine-panel" aria-labelledby="medicine-title">
+            <div class="brand-strip">
+                <div class="brand-mark medicine-mark" aria-hidden="true">+</div>
+                <div>
+                    <p class="eyebrow">Pill Care</p>
+                    <h1 id="medicine-title">ลงทะเบียนยา</h1>
+                </div>
+            </div>
+
+            <div class="group-badge">
+                <span>Group ID</span>
+                <strong>{{ group_id }}</strong>
+            </div>
+
+            {% if errors %}
+                <div class="error-panel" role="alert">
+                    {% for error in errors %}
+                        <p>{{ error }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+
+            <form method="post" enctype="multipart/form-data" class="medicine-form" novalidate>
+                <input type="hidden" name="group_id" value="{{ group_id }}">
+
+                <div id="medicine-list" class="medicine-list">
+                    {% for item in items %}
+                        <article class="medicine-item" data-medicine-item>
+                            <header class="medicine-item-header">
+                                <div>
+                                    <p class="item-kicker">Medicine</p>
+                                    <h2>รายการที่ <span data-item-number>{{ loop.index }}</span></h2>
+                                </div>
+                                <button class="icon-button remove-button" type="button" data-remove-item aria-label="ลบรายการยา">
+                                    <span aria-hidden="true">x</span>
+                                </button>
+                            </header>
+
+                            <div class="medicine-layout">
+                                <div class="upload-field">
+                                    <label class="field">
+                                        <span>รูปยา</span>
+                                        <input class="native-file-input" type="file" name="medicine_image[]" accept="image/*" data-image-input>
+                                    </label>
+                                    <span class="upload-preview" data-image-preview>
+                                        <span class="upload-plus" aria-hidden="true">+</span>
+                                        <span>ยังไม่ได้เลือกรูป</span>
+                                    </span>
+                                </div>
+
+                                <div class="medicine-fields">
+                                    <label class="field">
+                                        <span>ชื่อยา</span>
+                                        <input name="medicine_name[]" value="{{ item.get('medicine_name', '') }}" required>
+                                    </label>
+
+                                    <label class="field">
+                                        <span>ขนาดยา / วิธีทาน</span>
+                                        <input name="dosage[]" value="{{ item.get('dosage', '') }}" placeholder="เช่น 1 เม็ด หลังอาหาร">
+                                    </label>
+
+                                    <label class="field">
+                                        <span>เวลาที่ต้องทาน</span>
+                                        <input name="take_time[]" value="{{ item.get('take_time', '') }}" placeholder="เช่น 08:00, 20:00">
+                                    </label>
+
+                                    <label class="field">
+                                        <span>หมายเหตุ</span>
+                                        <input name="instruction[]" value="{{ item.get('instruction', '') }}" placeholder="เช่น ห้ามทานตอนท้องว่าง">
+                                    </label>
+                                </div>
+                            </div>
+                        </article>
+                    {% endfor %}
+                </div>
+
+                <div class="medicine-actions">
+                    <button class="secondary-button" type="button" id="add-medicine-button">
+                        <span aria-hidden="true">+</span>
+                        เพิ่มรายการยา
+                    </button>
+
+                    <button class="submit-button" type="submit">
+                        <span aria-hidden="true">✓</span>
+                        บันทึกรายการยา
+                    </button>
+                </div>
+            </form>
+        </section>
+    </main>
+
+    <template id="medicine-item-template">
+        <article class="medicine-item" data-medicine-item>
+            <header class="medicine-item-header">
+                <div>
+                    <p class="item-kicker">Medicine</p>
+                    <h2>รายการที่ <span data-item-number>1</span></h2>
+                </div>
+                <button class="icon-button remove-button" type="button" data-remove-item aria-label="ลบรายการยา">
+                    <span aria-hidden="true">x</span>
+                </button>
+            </header>
+
+            <div class="medicine-layout">
+                <div class="upload-field">
+                    <label class="field">
+                        <span>รูปยา</span>
+                        <input class="native-file-input" type="file" name="medicine_image[]" accept="image/*" data-image-input>
+                    </label>
+                    <span class="upload-preview" data-image-preview>
+                        <span class="upload-plus" aria-hidden="true">+</span>
+                        <span>ยังไม่ได้เลือกรูป</span>
+                    </span>
+                </div>
+
+                <div class="medicine-fields">
+                    <label class="field">
+                        <span>ชื่อยา</span>
+                        <input name="medicine_name[]" required>
+                    </label>
+
+                    <label class="field">
+                        <span>ขนาดยา / วิธีทาน</span>
+                        <input name="dosage[]" placeholder="เช่น 1 เม็ด หลังอาหาร">
+                    </label>
+
+                    <label class="field">
+                        <span>เวลาที่ต้องทาน</span>
+                        <input name="take_time[]" placeholder="เช่น 08:00, 20:00">
+                    </label>
+
+                    <label class="field">
+                        <span>หมายเหตุ</span>
+                        <input name="instruction[]" placeholder="เช่น ห้ามทานตอนท้องว่าง">
+                    </label>
+                </div>
+            </div>
+        </article>
+    </template>
+
+    <script>
+        const list = document.getElementById('medicine-list');
+        const template = document.getElementById('medicine-item-template');
+        const addButton = document.getElementById('add-medicine-button');
+
+        function resetPreview(preview) {
+            preview.innerHTML = '<span class="upload-plus" aria-hidden="true">+</span><span>ยังไม่ได้เลือกรูป</span>';
+            preview.style.backgroundImage = '';
+        }
+
+        function renumberItems() {
+            const items = list.querySelectorAll('[data-medicine-item]');
+            items.forEach((item, index) => {
+                item.querySelector('[data-item-number]').textContent = index + 1;
+                const removeButton = item.querySelector('[data-remove-item]');
+                removeButton.disabled = items.length === 1;
+            });
+        }
+
+        function bindItem(item) {
+            const removeButton = item.querySelector('[data-remove-item]');
+            const input = item.querySelector('[data-image-input]');
+            const preview = item.querySelector('[data-image-preview]');
+
+            removeButton.addEventListener('click', () => {
+                if (list.querySelectorAll('[data-medicine-item]').length === 1) {
+                    return;
+                }
+
+                item.remove();
+                renumberItems();
+            });
+
+            input.addEventListener('change', () => {
+                const file = input.files?.[0];
+                if (!file) {
+                    resetPreview(preview);
+                    return;
+                }
+
+                const imageUrl = URL.createObjectURL(file);
+                preview.innerHTML = '<span class="file-name"></span>';
+                preview.querySelector('.file-name').textContent = file.name;
+                preview.style.backgroundImage = `linear-gradient(rgba(20, 48, 31, 0.1), rgba(20, 48, 31, 0.42)), url("${imageUrl}")`;
+            });
+        }
+
+        addButton.addEventListener('click', () => {
+            const clone = template.content.firstElementChild.cloneNode(true);
+            list.appendChild(clone);
+            bindItem(clone);
+            renumberItems();
+            clone.querySelector('input[name="medicine_name[]"]').focus();
+        });
+
+        list.querySelectorAll('[data-medicine-item]').forEach(bindItem);
+        renumberItems();
+    </script>
+</body>
+</html>

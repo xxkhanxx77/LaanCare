@@ -1,0 +1,188 @@
+.medicine-panel {
+    width: min(100%, 920px);
+}
+
+.medicine-mark {
+    background: linear-gradient(135deg, #55b82e, #0f8f8c);
+}
+
+.error-panel {
+    display: grid;
+    gap: 6px;
+    margin-bottom: 18px;
+    border: 1px solid rgba(194, 65, 12, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 247, 237, 0.86);
+    padding: 12px 14px;
+}
+
+.error-panel p {
+    margin: 0;
+    color: #c2410c;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.medicine-form,
+.medicine-list {
+    display: grid;
+    gap: 18px;
+}
+
+.medicine-item {
+    border: 1px solid rgba(40, 125, 52, 0.18);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.72);
+    padding: 16px;
+}
+
+.medicine-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.item-kicker {
+    margin: 0 0 2px;
+    color: #0f8f8c;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+.medicine-item h2 {
+    margin: 0;
+    color: #14301f;
+    font-size: 20px;
+    line-height: 1.2;
+}
+
+.icon-button {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 auto;
+    place-items: center;
+    border: 1px solid rgba(40, 125, 52, 0.22);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.78);
+    color: #287d34;
+    cursor: pointer;
+    font: inherit;
+    font-size: 26px;
+    line-height: 1;
+}
+
+.icon-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.38;
+}
+
+.medicine-layout {
+    display: grid;
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    gap: 18px;
+    align-items: start;
+}
+
+.upload-field {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.native-file-input {
+    cursor: pointer;
+    padding: 9px;
+}
+
+.upload-preview {
+    display: grid;
+    min-height: 160px;
+    place-items: center;
+    border: 1px dashed rgba(40, 125, 52, 0.42);
+    border-radius: 8px;
+    background:
+        linear-gradient(135deg, rgba(223, 246, 199, 0.75), rgba(255, 255, 255, 0.82)),
+        rgba(255, 255, 255, 0.88);
+    background-position: center;
+    background-size: cover;
+    color: #287d34;
+    font-weight: 800;
+    overflow: hidden;
+    padding: 14px;
+    text-align: center;
+}
+
+.upload-plus {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    place-items: center;
+    border-radius: 999px;
+    background: linear-gradient(135deg, #55b82e, #0f8f8c);
+    color: white;
+    font-size: 28px;
+    line-height: 1;
+}
+
+.file-name {
+    max-width: 100%;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.86);
+    color: #14301f;
+    overflow-wrap: anywhere;
+    padding: 8px 10px;
+}
+
+.medicine-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+}
+
+.medicine-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+    gap: 12px;
+}
+
+.secondary-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 50px;
+    border: 1px solid rgba(40, 125, 52, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.82);
+    color: #287d34;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+}
+
+.secondary-button span {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(85, 184, 46, 0.18);
+    line-height: 1;
+}
+
+@media (max-width: 760px) {
+    .medicine-layout,
+    .medicine-fields,
+    .medicine-actions {
+        grid-template-columns: 1fr;
+    }
+
+    .upload-preview {
+        min-height: 150px;
+    }
+}

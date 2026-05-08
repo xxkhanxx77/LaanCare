@@ -1,0 +1,293 @@
+:root {
+    color-scheme: light;
+    --green: #55b82e;
+    --green-dark: #287d34;
+    --mint: #dff6c7;
+    --teal: #0f8f8c;
+    --ink: #14301f;
+    --muted: #5b725f;
+    --line: rgba(40, 125, 52, 0.18);
+    --panel: rgba(255, 255, 255, 0.86);
+    --danger: #c2410c;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+    margin: 0;
+    font-family: Arial, "Noto Sans Thai", Tahoma, sans-serif;
+    color: var(--ink);
+    background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(222, 248, 191, 0.72)),
+        linear-gradient(90deg, rgba(76, 184, 47, 0.12) 1px, transparent 1px),
+        linear-gradient(0deg, rgba(76, 184, 47, 0.1) 1px, transparent 1px),
+        #f5fbef;
+    background-size: auto, 54px 54px, 54px 54px, auto;
+}
+
+body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+        linear-gradient(120deg, transparent 0 18%, rgba(255, 255, 255, 0.7) 18% 18.4%, transparent 18.4% 100%),
+        repeating-linear-gradient(120deg, transparent 0 74px, rgba(85, 184, 46, 0.13) 75px, transparent 77px),
+        radial-gradient(circle at 82% 22%, rgba(15, 143, 140, 0.16), transparent 24%),
+        radial-gradient(circle at 20% 85%, rgba(85, 184, 46, 0.18), transparent 26%);
+}
+
+.page-shell {
+    position: relative;
+    display: grid;
+    min-height: 100vh;
+    place-items: center;
+    padding: 28px 16px;
+}
+
+.register-panel {
+    width: min(100%, 760px);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    box-shadow: 0 24px 80px rgba(20, 48, 31, 0.14);
+    backdrop-filter: blur(18px);
+    padding: clamp(20px, 4vw, 36px);
+}
+
+.brand-strip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 22px;
+}
+
+.brand-mark,
+.status-icon {
+    display: grid;
+    width: 48px;
+    height: 48px;
+    place-items: center;
+    border-radius: 8px;
+    color: white;
+    background: linear-gradient(135deg, var(--green), var(--teal));
+    font-size: 34px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.eyebrow {
+    margin: 0 0 4px;
+    color: var(--teal);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-transform: uppercase;
+}
+
+h1 {
+    margin: 0;
+    font-size: clamp(26px, 4vw, 38px);
+    line-height: 1.12;
+}
+
+.group-badge {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    align-items: center;
+    width: 100%;
+    margin: 0 0 24px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: rgba(223, 246, 199, 0.58);
+    padding: 12px 14px;
+}
+
+.group-badge span {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.group-badge strong {
+    overflow-wrap: anywhere;
+    color: var(--green-dark);
+    font-size: 14px;
+}
+
+.register-form {
+    display: grid;
+    gap: 18px;
+}
+
+.field-grid {
+    display: grid;
+    gap: 16px;
+}
+
+.two-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.field,
+.choice-field {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    margin: 0;
+    border: 0;
+    padding: 0;
+}
+
+.field span,
+.choice-field legend {
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 700;
+}
+
+input {
+    width: 100%;
+    min-height: 46px;
+    border: 1px solid rgba(40, 125, 52, 0.26);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--ink);
+    font: inherit;
+    outline: none;
+    padding: 11px 13px;
+}
+
+input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 0 3px rgba(85, 184, 46, 0.18);
+}
+
+small {
+    color: var(--danger);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.segmented {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.role-segmented {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.segmented label {
+    min-width: 0;
+}
+
+.segmented input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+}
+
+.segmented span {
+    display: grid;
+    min-height: 46px;
+    place-items: center;
+    border: 1px solid rgba(40, 125, 52, 0.24);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.78);
+    color: var(--green-dark);
+    font-size: 14px;
+    font-weight: 800;
+    text-align: center;
+    padding: 10px 8px;
+}
+
+.segmented input:checked + span {
+    border-color: var(--green);
+    background: linear-gradient(135deg, rgba(85, 184, 46, 0.96), rgba(15, 143, 140, 0.92));
+    color: white;
+    box-shadow: 0 10px 24px rgba(40, 125, 52, 0.18);
+}
+
+.patient-fields {
+    border-top: 1px solid var(--line);
+    padding-top: 18px;
+}
+
+.patient-fields[hidden] {
+    display: none;
+}
+
+.submit-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    min-height: 50px;
+    border: 0;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--green), var(--teal));
+    color: white;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 800;
+    box-shadow: 0 16px 34px rgba(40, 125, 52, 0.24);
+}
+
+.submit-button span {
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+    line-height: 1;
+}
+
+.success-shell {
+    text-align: center;
+}
+
+.success-panel {
+    width: min(100%, 520px);
+}
+
+.success-panel .status-icon {
+    margin: 0 auto 18px;
+    font-size: 26px;
+}
+
+.success-copy,
+.record-id {
+    margin: 12px 0 0;
+    color: var(--muted);
+}
+
+.record-id {
+    color: var(--green-dark);
+    font-weight: 800;
+}
+
+@media (max-width: 640px) {
+    .two-columns {
+        grid-template-columns: 1fr;
+    }
+
+    .segmented {
+        grid-template-columns: 1fr;
+    }
+
+    .role-segmented {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .brand-strip {
+        align-items: flex-start;
+    }
+}
