@@ -4,3 +4,5 @@
 /data
 test.json
 /src/__pycache__
+/static/uploads
+/image
