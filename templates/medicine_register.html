@@ -128,6 +128,51 @@
                 <div id="medicine-list" class="medicine-list"></div>
                 <p id="empty-medicines" class="empty-state" hidden>ยังไม่มีรายการยาในกลุ่มนี้</p>
             </section>
+
+            <section class="medicine-alerts" aria-labelledby="alert-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Proactive Alerts</p>
+                        <h2 id="alert-title">ตารางแจ้งเตือนกินยา</h2>
+                    </div>
+                    <div class="alert-actions">
+                        <button id="run-alerts" class="secondary-button compact-button" type="button">เช็กเวลานี้</button>
+                        <button id="refresh-alerts" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                    </div>
+                </div>
+
+                <div id="alert-schedule-list" class="alert-schedule-list"></div>
+                <p id="empty-alerts" class="empty-state" hidden>ยังไม่มีรายการยาที่แปลงเป็นเวลาแจ้งเตือนได้</p>
+            </section>
+
+            <section class="appointment-inventory" aria-labelledby="appointment-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Appointment Management</p>
+                        <h2 id="appointment-title">รายการนัดหมาย</h2>
+                    </div>
+                    <button id="refresh-appointments" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                </div>
+
+                <div id="appointment-list" class="medicine-list"></div>
+                <p id="empty-appointments" class="empty-state" hidden>ยังไม่มีรายการนัดหมายในกลุ่มนี้</p>
+            </section>
+
+            <section class="appointment-alerts" aria-labelledby="appointment-alert-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Appointment Alerts</p>
+                        <h2 id="appointment-alert-title">ตารางแจ้งเตือนนัดหมาย</h2>
+                    </div>
+                    <div class="alert-actions">
+                        <button id="run-appointment-alerts" class="secondary-button compact-button" type="button">เช็กเวลานี้</button>
+                        <button id="refresh-appointment-alerts" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                    </div>
+                </div>
+
+                <div id="appointment-alert-schedule-list" class="alert-schedule-list"></div>
+                <p id="empty-appointment-alerts" class="empty-state" hidden>ยังไม่มีนัดหมายที่แปลงเป็นเวลาแจ้งเตือนได้</p>
+            </section>
         </section>
     </main>
 
@@ -149,6 +194,17 @@
         const medicineList = document.getElementById('medicine-list');
         const emptyMedicines = document.getElementById('empty-medicines');
         const refreshMedicines = document.getElementById('refresh-medicines');
+        const alertScheduleList = document.getElementById('alert-schedule-list');
+        const emptyAlerts = document.getElementById('empty-alerts');
+        const refreshAlerts = document.getElementById('refresh-alerts');
+        const runAlerts = document.getElementById('run-alerts');
+        const appointmentList = document.getElementById('appointment-list');
+        const emptyAppointments = document.getElementById('empty-appointments');
+        const refreshAppointments = document.getElementById('refresh-appointments');
+        const appointmentAlertScheduleList = document.getElementById('appointment-alert-schedule-list');
+        const emptyAppointmentAlerts = document.getElementById('empty-appointment-alerts');
+        const refreshAppointmentAlerts = document.getElementById('refresh-appointment-alerts');
+        const runAppointmentAlerts = document.getElementById('run-appointment-alerts');
 
         const detectedLabels = {
             medicine: 'ยา',
@@ -235,6 +291,11 @@
             interactionReport.textContent = result.interaction_report || '';
 
             hydrateMedicineForm(detectedType, data, result, payload.image_path);
+            if (detectedType === 'appointment') {
+                setMessage(payload.appointment_id ? 'บันทึกรายการนัดหมายแล้ว' : 'วิเคราะห์ใบนัดสำเร็จ', 'success');
+                loadAppointments();
+                loadAppointmentAlertSchedule();
+            }
         }
 
         function hydrateMedicineForm(detectedType, data, result, imagePath) {
@@ -316,13 +377,16 @@
 
                 setMessage('บันทึกรายการยาแล้ว', 'success');
                 await loadMedicines();
+                await loadAlertSchedule();
             } catch (error) {
                 setMessage(error.message);
             }
         }
 
         async function loadMedicines() {
-            const response = await fetch(`/api/medicines?group_id=${encodeURIComponent(groupId)}`);
+            const response = await fetch(`/api/medicines?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
             const payload = await response.json();
             const medicines = payload.medicines || [];
 
@@ -358,7 +422,10 @@
             setMessage('');
 
             try {
-                const response = await fetch(`/api/medicines/${medicineId}`, { method: 'DELETE' });
+                const response = await fetch(`/api/medicines/${medicineId}?group_id=${encodeURIComponent(groupId)}`, {
+                    method: 'DELETE',
+                    cache: 'no-store',
+                });
                 const payload = await response.json();
 
                 if (!response.ok || !payload.success) {
@@ -367,8 +434,218 @@
 
                 setMessage('ลบรายการยาแล้ว', 'success');
                 await loadMedicines();
+                await loadAlertSchedule();
             } catch (error) {
                 setMessage(error.message);
+            }
+        }
+
+        async function loadAlertSchedule() {
+            const response = await fetch(`/api/medicine-alerts/schedule?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const schedule = payload.schedule || [];
+
+            alertScheduleList.innerHTML = '';
+            emptyAlerts.hidden = schedule.length > 0;
+
+            schedule.forEach((alert) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item alert-schedule-item';
+                item.innerHTML = `
+                    <div class="alert-time">
+                        <strong></strong>
+                        <span></span>
+                    </div>
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Medicine Alert</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta alert-targets"></p>
+                    </div>
+                `;
+                item.querySelector('.alert-time strong').textContent = alert.time || '-';
+                item.querySelector('.alert-time span').textContent = alert.slot_label || '-';
+                item.querySelector('h3').textContent = alert.medicine_name || '-';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    alert.dosage,
+                    alert.take_time,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('.alert-targets').textContent = [
+                    `Patient: ${formatNames(alert.patients)}`,
+                    `Caregiver: ${formatNames(alert.caregivers)}`,
+                ].join(' · ');
+                alertScheduleList.appendChild(item);
+            });
+        }
+
+        function formatNames(members) {
+            const names = (members || []).map((member) => member.name).filter(Boolean);
+            return names.length ? names.join(', ') : '-';
+        }
+
+        async function runDueAlerts() {
+            setMessage('');
+            runAlerts.disabled = true;
+            runAlerts.textContent = 'กำลังเช็ก...';
+
+            try {
+                const response = await fetch('/api/medicine-alerts/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: groupId }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'เช็กแจ้งเตือนไม่สำเร็จ');
+                }
+
+                const sentCount = (payload.results || []).filter((item) => item.status === 'sent').length;
+                const dueCount = (payload.alerts || []).length;
+                setMessage(
+                    dueCount ? `พบ ${dueCount} alert ที่ถึงเวลา ส่งสำเร็จ ${sentCount} รายการ` : 'ตอนนี้ยังไม่มี alert ที่ถึงเวลา',
+                    'success',
+                );
+            } catch (error) {
+                setMessage(error.message);
+            } finally {
+                runAlerts.disabled = false;
+                runAlerts.textContent = 'เช็กเวลานี้';
+            }
+        }
+
+        async function loadAppointments() {
+            const response = await fetch(`/api/appointments?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const appointments = payload.appointments || [];
+
+            appointmentList.innerHTML = '';
+            emptyAppointments.hidden = appointments.length > 0;
+
+            appointments.forEach((appointment) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item inventory-item';
+                item.innerHTML = `
+                    ${appointment.image_path ? `<img class="medicine-thumb" src="${appointment.image_path}" alt="">` : '<span class="medicine-thumb thumb-placeholder" aria-hidden="true">AP</span>'}
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Appointment</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta"></p>
+                    </div>
+                    <button class="icon-button remove-button" type="button" aria-label="ลบนัดหมาย">
+                        <span aria-hidden="true">x</span>
+                    </button>
+                `;
+                item.querySelector('h3').textContent = appointment.hospital || 'ใบนัดหมอ';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    appointment.appointment_date,
+                    appointment.appointment_time,
+                    appointment.department,
+                    appointment.doctor,
+                ].filter(Boolean).join(' · ');
+                item.querySelectorAll('.medicine-meta')[1].textContent = [
+                    appointment.preparation,
+                    appointment.reason,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('button').addEventListener('click', () => removeAppointment(appointment.id));
+                appointmentList.appendChild(item);
+            });
+        }
+
+        async function removeAppointment(appointmentId) {
+            setMessage('');
+
+            try {
+                const response = await fetch(`/api/appointments/${appointmentId}?group_id=${encodeURIComponent(groupId)}`, {
+                    method: 'DELETE',
+                    cache: 'no-store',
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'ลบนัดหมายไม่สำเร็จ');
+                }
+
+                setMessage('ลบนัดหมายแล้ว', 'success');
+                await loadAppointments();
+                await loadAppointmentAlertSchedule();
+            } catch (error) {
+                setMessage(error.message);
+            }
+        }
+
+        async function loadAppointmentAlertSchedule() {
+            const response = await fetch(`/api/appointment-alerts/schedule?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const schedule = payload.schedule || [];
+
+            appointmentAlertScheduleList.innerHTML = '';
+            emptyAppointmentAlerts.hidden = schedule.length > 0;
+
+            schedule.forEach((alert) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item alert-schedule-item';
+                item.innerHTML = `
+                    <div class="alert-time">
+                        <strong></strong>
+                        <span></span>
+                    </div>
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Appointment Alert</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta alert-targets"></p>
+                    </div>
+                `;
+                const scheduled = alert.scheduled_for ? new Date(alert.scheduled_for) : null;
+                item.querySelector('.alert-time strong').textContent = scheduled ? scheduled.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '-';
+                item.querySelector('.alert-time span').textContent = alert.test_mode ? 'ทดสอบ' : 'ก่อนนัด';
+                item.querySelector('h3').textContent = alert.hospital || 'ใบนัดหมอ';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    alert.appointment_display,
+                    alert.department,
+                    alert.doctor,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('.alert-targets').textContent = `Patient: ${formatNames(alert.patients)}`;
+                appointmentAlertScheduleList.appendChild(item);
+            });
+        }
+
+        async function runDueAppointmentAlerts() {
+            setMessage('');
+            runAppointmentAlerts.disabled = true;
+            runAppointmentAlerts.textContent = 'กำลังเช็ก...';
+
+            try {
+                const response = await fetch('/api/appointment-alerts/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: groupId }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'เช็กแจ้งเตือนนัดหมายไม่สำเร็จ');
+                }
+
+                const sentCount = (payload.results || []).filter((item) => item.status === 'sent').length;
+                const dueCount = (payload.alerts || []).length;
+                setMessage(
+                    dueCount ? `พบ ${dueCount} appointment alert ที่ถึงเวลา ส่งสำเร็จ ${sentCount} รายการ` : 'ตอนนี้ยังไม่มี appointment alert ที่ถึงเวลา',
+                    'success',
+                );
+            } catch (error) {
+                setMessage(error.message);
+            } finally {
+                runAppointmentAlerts.disabled = false;
+                runAppointmentAlerts.textContent = 'เช็กเวลานี้';
             }
         }
 
@@ -388,7 +665,15 @@
         ocrForm.addEventListener('submit', submitOcr);
         saveMedicineForm.addEventListener('submit', saveMedicine);
         refreshMedicines.addEventListener('click', loadMedicines);
+        refreshAlerts.addEventListener('click', loadAlertSchedule);
+        runAlerts.addEventListener('click', runDueAlerts);
+        refreshAppointments.addEventListener('click', loadAppointments);
+        refreshAppointmentAlerts.addEventListener('click', loadAppointmentAlertSchedule);
+        runAppointmentAlerts.addEventListener('click', runDueAppointmentAlerts);
         loadMedicines();
+        loadAlertSchedule();
+        loadAppointments();
+        loadAppointmentAlertSchedule();
     </script>
 </body>
 </html>

@@ -403,3 +403,113 @@ class ChatDatabase:
             )
         )
         return row or {"calls": 0, "tokens": 0}
+
+    def report_snapshot(self, user_ids=None, group_id=None, limit=12):
+        user_ids = [str(user_id).strip() for user_id in (user_ids or []) if str(user_id or "").strip()]
+        group_id = str(group_id or "").strip()
+        matched_user_ids = list(dict.fromkeys(user_ids + self._user_ids_for_group_payload(group_id)))
+
+        if matched_user_ids:
+            where = "user_id IN ({0})".format(", ".join(sql_quote(user_id) for user_id in matched_user_ids))
+        elif group_id:
+            where = "0=1"
+        else:
+            where = "1=1"
+
+        sessions = self._many(
+            """
+            SELECT session_id, user_id, session_mode, started_at, ended_at, state_json, short_conclusion
+            FROM sessions
+            WHERE {where}
+            ORDER BY session_id DESC
+            LIMIT {limit};
+            """.format(where=where, limit=int(limit))
+        )
+        observations = self._many(
+            """
+            SELECT id, session_id, user_id, group_id, risk_level, observation_json, created_at
+            FROM observations
+            WHERE {where}
+            ORDER BY id DESC
+            LIMIT {limit};
+            """.format(where=where, limit=int(limit))
+        )
+        alerts = self._many(
+            """
+            SELECT id, session_id, user_id, caregiver_user_id, risk_level, group_id, message, delivered, blocked_reason, created_at
+            FROM alerts
+            WHERE {where}
+            ORDER BY id DESC
+            LIMIT {limit};
+            """.format(where=where, limit=int(limit))
+        )
+        messages = self._many(
+            """
+            SELECT id, session_id, user_id, role, message, created_at
+            FROM chat_logs
+            WHERE {where}
+            ORDER BY id DESC
+            LIMIT {limit};
+            """.format(where=where, limit=int(limit))
+        )
+        risk_counts = self._many(
+            """
+            SELECT COALESCE(NULLIF(risk_level, ''), 'unknown') AS risk_level, COUNT(*) AS count
+            FROM observations
+            WHERE {where}
+            GROUP BY COALESCE(NULLIF(risk_level, ''), 'unknown')
+            ORDER BY count DESC;
+            """.format(where=where)
+        )
+        counts = self._one(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM users WHERE {where}) AS users,
+              (SELECT COUNT(*) FROM sessions WHERE {where}) AS sessions,
+              (SELECT COUNT(*) FROM sessions WHERE {where} AND ended_at IS NULL) AS active_sessions,
+              (SELECT COUNT(*) FROM chat_logs WHERE {where}) AS messages,
+              (SELECT COUNT(*) FROM observations WHERE {where}) AS observations,
+              (SELECT COUNT(*) FROM alerts WHERE {where}) AS alerts,
+              (SELECT COUNT(*) FROM alerts WHERE {where} AND risk_level = 'red') AS red_alerts,
+              (SELECT COUNT(*) FROM alerts WHERE {where} AND risk_level = 'yellow') AS yellow_alerts;
+            """.format(where=where)
+        ) or {}
+
+        return {
+            "summary": counts,
+            "user_ids": matched_user_ids,
+            "risk_counts": risk_counts,
+            "sessions": [self._decode_session(row) for row in sessions],
+            "observations": [self._decode_observation(row) for row in observations],
+            "alerts": alerts,
+            "messages": messages,
+        }
+
+    def _user_ids_for_group_payload(self, group_id):
+        if not group_id:
+            return []
+        rows = self._many(
+            """
+            SELECT DISTINCT user_id
+            FROM chat_logs
+            WHERE raw_payload LIKE {pattern}
+            ORDER BY user_id;
+            """.format(pattern=sql_quote("%" + group_id + "%"))
+        )
+        return [row.get("user_id") for row in rows if row.get("user_id")]
+
+    def _decode_session(self, row):
+        session = dict(row)
+        try:
+            session["state"] = json.loads(session.pop("state_json") or "{}")
+        except Exception:
+            session["state"] = {}
+        return session
+
+    def _decode_observation(self, row):
+        observation = dict(row)
+        try:
+            observation["observation"] = json.loads(observation.pop("observation_json") or "{}")
+        except Exception:
+            observation["observation"] = {}
+        return observation

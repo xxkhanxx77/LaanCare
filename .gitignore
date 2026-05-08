@@ -1,5 +1,5 @@
 .venv
-.env.example
+.env
 /__pycache__
 /data
 test.json

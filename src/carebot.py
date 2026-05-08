@@ -101,14 +101,14 @@ def get_carebot_payload():
 
 
 def generate_carebot_reply(message, history, context):
-    api_key = os.getenv("GEMINI_API_KEY") or os.getenv("VITE_GEMINI_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise CareBotError("Gemini API Key not configured on server")
+        raise CareBotError("OPENAI_API_KEY is not configured on server")
 
     try:
-        from google import genai
+        from openai import OpenAI
     except ImportError as error:
-        raise CareBotError("google-genai is not installed") from error
+        raise CareBotError("openai is not installed") from error
 
     severity = context.get("severity", "Normal")
     score = context.get("score", "0")
@@ -124,15 +124,18 @@ def generate_carebot_reply(message, history, context):
         f"{'CareBot' if item.get('role') == 'ai' else 'User'}: {item.get('text', '')}"
         for item in history
     )
-    prompt = f"{system_prompt}\n\nประวัติการสนทนา:\n{history_text}\nUser: {message}\nCareBot:"
+    user_prompt = f"ประวัติการสนทนา:\n{history_text}\n\nUser: {message}"
 
     try:
-        client = genai.Client(api_key=api_key)
-        response = client.models.generate_content(
-            model="gemini-flash-lite-latest",
-            contents=prompt,
+        client = OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
         )
     except Exception as error:
         raise CareBotError(str(error)) from error
 
-    return response.text
+    return response.choices[0].message.content or ""

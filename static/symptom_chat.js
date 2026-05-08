@@ -8,7 +8,7 @@
     const resetButton = document.getElementById("reset-button");
     const riskEl = document.getElementById("risk-level");
     const groupEl = document.getElementById("group-name");
-    const geminiEl = document.getElementById("gemini-status");
+    const llmEl = document.getElementById("llm-status");
     const alertsEl = document.getElementById("alerts");
     const knowledgeEl = document.getElementById("knowledge");
 
@@ -127,7 +127,11 @@
         const response = await fetch("/api/symptom-chat/reset", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({user_id: userId, line_user_id: context.lineUserId || ""}),
+            body: JSON.stringify({
+                user_id: userId,
+                line_user_id: context.lineUserId || "",
+                group_id: context.groupId || "",
+            }),
         });
         const result = await response.json();
         messagesEl.replaceChildren();
@@ -138,7 +142,7 @@
     async function bootstrap() {
         const response = await fetch(`/api/symptom-chat/bootstrap?user_id=${encodeURIComponent(userId)}`);
         const data = await response.json();
-        geminiEl.textContent = data.gemini && data.gemini.enabled ? data.gemini.model : "local rules";
+        llmEl.textContent = data.llm && data.llm.enabled ? data.llm.model : "local rules";
         riskEl.textContent = (data.session && data.session.state_json && data.session.state_json.risk_level) || "-";
         groupEl.textContent = (data.session && data.session.state_json && data.session.state_json.active_group_id) || "-";
         renderAlerts(data.alerts || []);
