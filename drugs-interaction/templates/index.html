@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Drug Interaction Checker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero card">
+        <p class="eyebrow">Medication Safety Tool</p>
+        <h1>BM25 + Fuzzy Matching Interaction Checker</h1>
+        <p class="subtext">
+          Add multiple generic medication names. The tool maps each input to the closest medication in your database,
+          accepts matches only above the threshold, and checks high-risk interactions.
+        </p>
+      </section>
+
+      <section class="card form-card">
+        <label for="drugInput">Medication names (comma/new line separated)</label>
+        <textarea
+          id="drugInput"
+          placeholder="Example: warfarin, ibuprofen, clarithromycin, lisinopril"
+        ></textarea>
+
+        <div class="controls">
+          <label for="threshold">Match threshold (%)</label>
+          <input id="threshold" type="number" min="50" max="100" value="80" />
+          <button id="analyzeBtn" type="button">Analyze Interactions</button>
+        </div>
+
+        <p id="status" class="status"></p>
+      </section>
+
+      <section class="card" id="summaryCard" hidden>
+        <h2>Summary</h2>
+        <div id="summary"></div>
+      </section>
+
+      <section class="card" id="matchesCard" hidden>
+        <h2>Mapped Medications</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Input</th>
+                <th>Matched Name</th>
+                <th>Group</th>
+                <th>Confidence</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="matchesBody"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card" id="interactionsCard" hidden>
+        <h2>Detected High-Risk Interactions</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Drug/Group 1</th>
+                <th>Drug/Group 2</th>
+                <th>Severity</th>
+                <th>Symptoms</th>
+                <th>Risk</th>
+                <th>Matched By</th>
+              </tr>
+            </thead>
+            <tbody id="interactionsBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      const statusEl = document.getElementById("status");
+      const summaryCard = document.getElementById("summaryCard");
+      const matchesCard = document.getElementById("matchesCard");
+      const interactionsCard = document.getElementById("interactionsCard");
+      const summaryEl = document.getElementById("summary");
+      const matchesBody = document.getElementById("matchesBody");
+      const interactionsBody = document.getElementById("interactionsBody");
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      analyzeBtn.addEventListener("click", async () => {
+        const drugs = document.getElementById("drugInput").value;
+        const threshold = Number(document.getElementById("threshold").value || 80);
+
+        statusEl.textContent = "Analyzing medication names and interactions...";
+        summaryCard.hidden = true;
+        matchesCard.hidden = true;
+        interactionsCard.hidden = true;
+
+        try {
+          const response = await fetch("/api/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ drugs, threshold })
+          });
+
+          const data = await response.json();
+          if (!response.ok) {
+            statusEl.textContent = data.error || "Unable to analyze medications.";
+            return;
+          }
+
+          statusEl.textContent = "Analysis complete.";
+
+          summaryEl.innerHTML = `
+            <p><strong>Input drugs:</strong> ${data.input_count}</p>
+            <p><strong>Mapped above threshold:</strong> ${data.matched_count}</p>
+            <p><strong>Threshold:</strong> ${data.threshold}%</p>
+            <p><strong>High-risk interactions found:</strong> ${data.interactions.length}</p>
+          `;
+          summaryCard.hidden = false;
+
+          matchesBody.innerHTML = data.matches
+            .map((m) => {
+              const selected = m.selected || {};
+              const status = m.matched ? "Matched" : `Unmatched (${escapeHtml(m.reason || "below threshold")})`;
+              return `
+                <tr>
+                  <td>${escapeHtml(m.input)}</td>
+                  <td>${escapeHtml(selected.generic_name || "-")}</td>
+                  <td>${escapeHtml(selected.medication_group || "-")}</td>
+                  <td>${selected.confidence != null ? `${selected.confidence}%` : "-"}</td>
+                  <td>${status}</td>
+                </tr>
+              `;
+            })
+            .join("");
+          matchesCard.hidden = false;
+
+          if (data.interactions.length) {
+            interactionsBody.innerHTML = data.interactions
+              .map((i) => `
+                <tr>
+                  <td>${escapeHtml(i.group_1)}</td>
+                  <td>${escapeHtml(i.group_2)}</td>
+                  <td>${escapeHtml(i.interaction_severity || "High")}</td>
+                  <td>${escapeHtml(i.possible_symptoms || "-")}</td>
+                  <td>${escapeHtml(i.interaction_risk || "-")}</td>
+                  <td>${escapeHtml(i.matched_by || "-")}</td>
+                </tr>
+              `)
+              .join("");
+          } else {
+            interactionsBody.innerHTML = `
+              <tr>
+                <td colspan="6">No high-risk interactions detected for mapped medications.</td>
+              </tr>
+            `;
+          }
+          interactionsCard.hidden = false;
+        } catch (error) {
+          statusEl.textContent = "An error occurred while contacting the analyzer.";
+        }
+      });
+    </script>
+  </body>
+</html>
