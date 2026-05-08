@@ -10,7 +10,6 @@ LINE_CHANNEL_SECRET = os.getenv("LINE_CHANNEL_SECRET", "").strip()
 # print(LINE_CHANNEL_SECRET)
 
 HOST = os.getenv("HOST", "localhost")
-print(HOST)
 PORT = int(os.getenv("PORT", "5000"))
 DEBUG = os.getenv("DEBUG", True)
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
