@@ -4,6 +4,10 @@ try:
     from .flex import *
     from .medguard_ocr import OCRServiceError, perform_health_ocr
     from .ocr_engine import check_interactions
+    from .symptom_db import ChatDatabase
+    from .symptom_ems_loader import EmsCorpus
+    from .symptom_engine import ChatEngine
+    from .symptom_gemini_client import GeminiClient
     from .storage import (
         delete_medicine,
         delete_registration,
@@ -26,6 +30,10 @@ except ImportError:
     from flex import *
     from medguard_ocr import OCRServiceError, perform_health_ocr
     from ocr_engine import check_interactions
+    from symptom_db import ChatDatabase
+    from symptom_ems_loader import EmsCorpus
+    from symptom_engine import ChatEngine
+    from symptom_gemini_client import GeminiClient
     from storage import (
         delete_medicine,
         delete_registration,
@@ -46,6 +54,7 @@ except ImportError:
 
 import json
 import os
+from pathlib import Path
 from uuid import uuid4
 from urllib.parse import urlencode
 
@@ -70,6 +79,39 @@ from linebot.exceptions import (
 )
 
 app = Flask(__name__, template_folder="../templates", static_folder="../static")
+ROOT_DIR = Path(__file__).resolve().parents[1]
+SYMPTOM_DB_PATH = os.environ.get("CHATBOT_DB", str(ROOT_DIR / "data" / "symptom_chatbot.sqlite3"))
+SYMPTOM_DIR = ROOT_DIR / "src" / "symptoms"
+_symptom_engine = None
+
+
+def get_symptom_engine():
+    global _symptom_engine
+    if _symptom_engine is None:
+        symptom_db = ChatDatabase(SYMPTOM_DB_PATH)
+        symptom_corpus = EmsCorpus(SYMPTOM_DIR)
+        symptom_gemini = GeminiClient()
+        _symptom_engine = ChatEngine(symptom_db, symptom_corpus, symptom_gemini)
+    return _symptom_engine
+
+
+def decode_symptom_user(user):
+    data = dict(user)
+    try:
+        data["config_json"] = json.loads(data.get("config_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        data["config_json"] = {}
+    data["consent_to_share"] = bool(data.get("consent_to_share"))
+    return data
+
+
+def decode_symptom_session(session):
+    data = dict(session)
+    try:
+        data["state_json"] = json.loads(data.get("state_json") or "{}")
+    except (TypeError, json.JSONDecodeError):
+        data["state_json"] = {}
+    return data
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 line_bot_api = LineBotApi(channel_access_token=LINE_ACCESS_TOKEN, timeout=3)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -269,6 +311,110 @@ def carebot_chat_api():
         return jsonify({"success": False, "error": str(error)}), 502
 
     return jsonify({"success": True, "response": response_text})
+
+
+@app.get("/symptom-chat")
+def symptom_chat():
+    return render_template(
+        "symptom_chat.html",
+        group_id=request.args.get("group_id", "").strip(),
+        line_user_id=request.args.get("line_user_id", "").strip(),
+    )
+
+
+@app.get("/api/symptom-chat/health")
+def symptom_chat_health_api():
+    symptom_engine = get_symptom_engine()
+    return jsonify(
+        {
+            "ok": True,
+            "db": str(symptom_engine.db.db_path),
+            "gemini_status": symptom_engine.gemini.status(),
+            "groups_loaded": len(symptom_engine.corpus.groups),
+        }
+    )
+
+
+@app.get("/api/symptom-chat/bootstrap")
+def symptom_chat_bootstrap_api():
+    user_id = request.args.get("user_id") or request.args.get("line_user_id") or "U_DEMO"
+    symptom_engine = get_symptom_engine()
+    user = symptom_engine.db.get_or_create_user(user_id)
+    session = symptom_engine.db.get_or_start_session(user_id)
+
+    return jsonify(
+        {
+            "user": decode_symptom_user(user),
+            "session": decode_symptom_session(session),
+            "alerts": symptom_engine.db.alerts_for_user(user_id),
+            "gemini": symptom_engine.gemini.status(),
+            "groups_loaded": len(symptom_engine.corpus.groups),
+        }
+    )
+
+
+@app.get("/api/symptom-chat/memory")
+def symptom_chat_memory_api():
+    user_id = request.args.get("user_id") or request.args.get("line_user_id") or "U_DEMO"
+    symptom_engine = get_symptom_engine()
+    session = symptom_engine.db.get_or_start_session(user_id)
+
+    return jsonify(
+        {
+            "previous_sessions": symptom_engine.db.previous_summaries(user_id, limit=10),
+            "recent_chat": symptom_engine.db.recent_chat(session["session_id"], limit=30),
+            "alerts": symptom_engine.db.alerts_for_user(user_id, limit=20),
+            "llm_stats": symptom_engine.db.llm_stats(session["session_id"]),
+        }
+    )
+
+
+@app.post("/api/symptom-chat/users")
+def symptom_chat_users_api():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("user_id") or "U_DEMO"
+    config = payload.get("config") or {"daily_summary": True, "line_simulation": True}
+    symptom_engine = get_symptom_engine()
+    user = symptom_engine.db.update_user(
+        user_id=user_id,
+        display_name=payload.get("display_name") or user_id,
+        caregiver_user_id=payload.get("caregiver_user_id") or "",
+        consent_to_share=bool(payload.get("consent_to_share", True)),
+        personalized_prompt=payload.get("personalized_prompt") or "",
+        config_json=config,
+    )
+
+    return jsonify({"user": decode_symptom_user(user)})
+
+
+@app.post("/api/symptom-chat/chat")
+def symptom_chat_api():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("user_id") or payload.get("line_user_id") or "U_DEMO"
+    symptom_engine = get_symptom_engine()
+    result = symptom_engine.handle_message(
+        user_id=user_id,
+        text=payload.get("text") or "",
+        session_mode=payload.get("session_mode") or "self_checkin",
+        user_can_chat=bool(payload.get("user_can_chat", True)),
+        raw_payload={"channel": "web", "payload": payload},
+    )
+
+    return jsonify(result)
+
+
+@app.post("/api/symptom-chat/reset")
+def symptom_chat_reset_api():
+    payload = request.get_json(silent=True) or {}
+    user_id = payload.get("user_id") or payload.get("line_user_id") or "U_DEMO"
+    symptom_engine = get_symptom_engine()
+    result = symptom_engine.handle_message(
+        user_id=user_id,
+        text="/reset",
+        raw_payload={"channel": "web", "payload": payload},
+    )
+
+    return jsonify(result)
 
 
 @app.post("/save-assessment")
@@ -699,6 +845,18 @@ def build_carebot_url(group_id=None, line_user_id=None):
     return f"{base_url}/carebot{query}"
 
 
+def build_symptom_chat_url(group_id=None, line_user_id=None):
+    base_url = PUBLIC_BASE_URL or request.url_root.strip("/")
+    params = {}
+    if group_id:
+        params["group_id"] = group_id
+    if line_user_id:
+        params["line_user_id"] = line_user_id
+
+    query = f"?{urlencode(params)}" if params else ""
+    return f"{base_url}/symptom-chat{query}"
+
+
 def get_source_group_id(source):
     return getattr(source, "group_id", None) or getattr(source, "room_id", None)
 
@@ -769,6 +927,7 @@ def join_event(event):
     register_url = build_register_url(group_id) if group_id else None
     medicine_url = build_medicine_url(group_id) if group_id else None
     carebot_url = build_carebot_url(group_id) if group_id else None
+    symptom_chat_url = build_symptom_chat_url(group_id) if group_id else None
     has_registered_members = group_has_registered_members(group_id)
     flex_message = FlexSendMessage(
         alt_text="น้องพิล features",
@@ -776,8 +935,10 @@ def join_event(event):
             register_url,
             medicine_url,
             carebot_url,
+            symptom_chat_url,
             medguard_locked=not has_registered_members,
             carebot_locked=not has_registered_members,
+            symptom_chat_locked=not has_registered_members,
         ),
     )
     print(flex_message)
@@ -802,7 +963,8 @@ def handle_message(event):
                         "น้องพิลมาแล้วค้าบ เรียกใช้งานด้วย keyword เหล่านี้ได้เลย\n\n"
                         "• จัดการสมาชิก - เพิ่ม/แก้ไขข้อมูลสมาชิกในกลุ่ม\n"
                         "• MedGuard AI - วิเคราะห์รูปสุขภาพและจัดการยา\n"
-                        "• CareBot - ทำแบบประเมินสุขภาพจิต"
+                        "• CareBot - ทำแบบประเมินสุขภาพจิต\n"
+                        "• เช็กอาการ - เช็กอินอาการผิดปกติ"
                     )
                 ),
             )
@@ -840,6 +1002,27 @@ def handle_message(event):
                 event.reply_token,
                 messages=[
                     TextSendMessage(text="ได้เลยค้าบ มาอัปเดตข้อมูลสมาชิกในกลุ่มกัน"),
+                    flex_message,
+                ],
+            )
+            return
+
+        if normalized_text in {"chat-symtom", "chat-symptom", "symtom", "symptom", "เช็กอาการ", "เช็คอาการ"}:
+            group_id = get_source_group_id(event.source)
+            line_user_id = getattr(event.source, "user_id", None)
+            symptom_chat_url = build_symptom_chat_url(group_id, line_user_id)
+            is_locked = not group_has_registered_members(group_id)
+            flex_message = FlexSendMessage(
+                alt_text="Symptom Check-in",
+                contents=symptom_chat_bubble(symptom_chat_url, locked=is_locked),
+            )
+            intro_text = "ได้เลยค้าบ มาเช็กอินอาการผิดปกติกัน"
+            if is_locked:
+                intro_text = "ก่อนเริ่มเช็กอาการ ขอจัดการสมาชิกในกลุ่มให้เรียบร้อยก่อนนะค้าบ"
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text=intro_text),
                     flex_message,
                 ],
             )
@@ -932,6 +1115,29 @@ def handle_postback(event):
                 event.reply_token,
                 messages=[
                     TextSendMessage(text="เจอสมาชิกในกลุ่มแล้วค้าบ เปิด CareBot ให้เลยนะ"),
+                    flex_message,
+                ],
+            )
+            return
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            messages=TextSendMessage(text="รบกวนจัดการสมาชิกในกลุ่มก่อนนะค้าบบบ"),
+        )
+        return
+
+    if get_postback_feature(postback_data) == "symptom_chat_membership_required":
+        group_id = get_source_group_id(event.source)
+        if group_has_registered_members(group_id):
+            symptom_chat_url = build_symptom_chat_url(group_id, user_id)
+            flex_message = FlexSendMessage(
+                alt_text="Symptom Check-in",
+                contents=symptom_chat_bubble(symptom_chat_url),
+            )
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text="เจอสมาชิกในกลุ่มแล้วค้าบ เปิด Symptom Check-in ให้เลยนะ"),
                     flex_message,
                 ],
             )
