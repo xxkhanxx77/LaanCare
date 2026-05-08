@@ -6,6 +6,38 @@
     <title>Medicines Saved</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='medicine.css') }}">
+    <style>
+        .interaction-section {
+            margin-top: 1.5rem;
+            text-align: left;
+        }
+        .interaction-card {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-left: 4px solid #e53935;
+            border-radius: 8px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 0.75rem;
+        }
+        .interaction-card .drug-name {
+            font-weight: 600;
+            color: #c62828;
+            margin-bottom: 0.4rem;
+        }
+        .interaction-card pre {
+            margin: 0;
+            white-space: pre-wrap;
+            font-family: inherit;
+            font-size: 0.9rem;
+            color: #333;
+        }
+        .interaction-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #c62828;
+            margin-bottom: 0.75rem;
+        }
+    </style>
 </head>
 <body>
     <main class="page-shell success-shell">
@@ -15,6 +47,18 @@
             <h1 id="success-title">บันทึกรายการยาแล้ว</h1>
             <p class="success-copy">เพิ่มรายการยา {{ count }} รายการให้ Group ID นี้</p>
             <p class="record-id">{{ group_id }}</p>
+
+            {% if interaction_reports %}
+            <div class="interaction-section">
+                <p class="interaction-title">⚠️ พบความเสี่ยงปฏิกิริยายา</p>
+                {% for item in interaction_reports %}
+                <div class="interaction-card">
+                    <div class="drug-name">{{ item.medicine }}</div>
+                    <pre>{{ item.report }}</pre>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
         </section>
     </main>
 </body>
