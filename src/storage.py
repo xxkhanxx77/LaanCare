@@ -1,3 +1,4 @@
+import json
 import os
 import sqlite3
 from datetime import datetime, timezone
@@ -48,6 +49,20 @@ def init_db():
                 dosage TEXT,
                 take_time TEXT,
                 instruction TEXT,
+                image_path TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS ocr_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT NOT NULL,
+                detected_type TEXT,
+                data_json TEXT,
+                interpretation TEXT,
+                interaction_report TEXT,
                 image_path TEXT,
                 created_at TEXT NOT NULL
             )
@@ -329,6 +344,10 @@ def save_medicine_items(group_id, items):
     return inserted_ids
 
 
+def save_medicine_item(group_id, item):
+    return save_medicine_items(group_id, [item])[0]
+
+
 def list_medicines(group_id=None):
     init_db()
 
@@ -353,3 +372,84 @@ def list_medicines(group_id=None):
             ).fetchall()
 
     return [dict(row) for row in rows]
+
+
+def delete_medicine(medicine_id):
+    init_db()
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            DELETE FROM medicines
+            WHERE id = ?
+            """,
+            (medicine_id,),
+        )
+
+    return cursor.rowcount > 0
+
+
+def save_ocr_result(group_id, result, image_path=None):
+    init_db()
+    created_at = datetime.now(timezone.utc).isoformat()
+    data = result.get("data")
+    data_json = json.dumps(data, ensure_ascii=False) if data is not None else None
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO ocr_results (
+                group_id,
+                detected_type,
+                data_json,
+                interpretation,
+                interaction_report,
+                image_path,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                group_id,
+                result.get("detected_type"),
+                data_json,
+                result.get("interpretation"),
+                result.get("interaction_report"),
+                image_path,
+                created_at,
+            ),
+        )
+
+    return cursor.lastrowid
+
+
+def list_ocr_results(group_id=None):
+    init_db()
+
+    with get_connection() as connection:
+        if group_id:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM ocr_results
+                WHERE group_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (group_id,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM ocr_results
+                ORDER BY created_at DESC, id DESC
+                """
+            ).fetchall()
+
+    results = []
+    for row in rows:
+        result = dict(row)
+        result["data"] = json.loads(result.pop("data_json") or "null")
+        results.append(result)
+
+    return results

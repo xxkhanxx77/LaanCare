@@ -1,14 +1,14 @@
-def register_flex(register_url=None):
+def member_management_bubble(register_url=None):
     action = {
         "type": "postback",
-        "label": "Register",
+        "label": "จัดการสมาชิก",
         "data": "{\"data\": \"register\"}",
     }
 
     if register_url:
         action = {
             "type": "uri",
-            "label": "Register",
+            "label": "จัดการสมาชิก",
             "uri": register_url,
         }
 
@@ -29,14 +29,14 @@ def register_flex(register_url=None):
             "contents": [
                 {
                     "type": "text",
-                    "text": "ลงทะเบียนสมาชิกกลุ่ม",
+                    "text": "จัดการสมาชิกกลุ่ม",
                     "weight": "bold",
                     "size": "lg",
                     "color": "#14301f",
                 },
                 {
                     "type": "text",
-                    "text": "เลือก Role เป็น Patient หรือ Caregiver เพื่อเริ่มใช้งาน",
+                    "text": "ดูแลข้อมูล Patient และ Caregiver ของกลุ่มนี้",
                     "size": "sm",
                     "wrap": True,
                     "color": "#5b725f",
@@ -53,27 +53,47 @@ def register_flex(register_url=None):
     }
 
 
-def features_carousel_flex(register_url=None, medicine_url=None):
+def register_flex(register_url=None):
+    return member_management_bubble(register_url)
+
+
+def features_bubbles(register_url=None, medicine_url=None, medguard_locked=False):
+    return [
+        member_management_bubble(register_url),
+        medguard_ai_bubble(medicine_url, locked=medguard_locked),
+    ]
+
+
+def features_carousel_flex(register_url=None, medicine_url=None, medguard_locked=False):
     return {
         "type": "carousel",
-        "contents": [
-            register_flex(register_url),
-            medguard_features_bubble(medicine_url),
-        ],
+        "contents": features_bubbles(register_url, medicine_url, medguard_locked),
     }
 
 
-def medguard_features_bubble(medicine_url=None):
+def medguard_ai_bubble(medicine_url=None, locked=False):
     medicine_action = {
         "type": "postback",
-        "label": "จัดการยา",
+        "label": "ใช้งาน Madguard AI",
         "data": "feature=medicine_management",
     }
+    button_color = "#55b82e"
+    hero_color = "#0f8f8c"
+    description = "ส่งรูปสุขภาพให้ AI วิเคราะห์อัตโนมัติ และจัดการรายการยาที่ใช้ประจำ"
 
-    if medicine_url:
+    if locked:
+        medicine_action = {
+            "type": "postback",
+            "label": "จัดการสมาชิกก่อน",
+            "data": "feature=membership_required",
+        }
+        button_color = "#9aa8a0"
+        hero_color = "#7d8b83"
+        description = "กรุณาจัดการข้อมูลสมาชิกในกลุ่มก่อน แล้วค่อยใช้งาน MedGuard AI"
+    elif medicine_url:
         medicine_action = {
             "type": "uri",
-            "label": "จัดการยา",
+            "label": "ใช้งาน Madguard AI",
             "uri": medicine_url,
         }
 
@@ -92,7 +112,7 @@ def medguard_features_bubble(medicine_url=None):
                     "height": "72px",
                     "justifyContent": "center",
                     "alignItems": "center",
-                    "backgroundColor": "#0f8f8c",
+                    "backgroundColor": hero_color,
                     "cornerRadius": "md",
                     "contents": [
                         {
@@ -113,7 +133,7 @@ def medguard_features_bubble(medicine_url=None):
                 },
                 {
                     "type": "text",
-                    "text": "ส่งรูปสุขภาพให้ AI วิเคราะห์อัตโนมัติ และจัดการรายการยาที่ใช้ประจำ",
+                    "text": description,
                     "size": "sm",
                     "color": "#5b725f",
                     "wrap": True,
@@ -141,22 +161,16 @@ def medguard_features_bubble(medicine_url=None):
                     "type": "button",
                     "style": "primary",
                     "height": "sm",
-                    "color": "#0f8f8c",
-                    "action": {
-                        "type": "postback",
-                        "label": "วิธีใช้ OCR",
-                        "data": "feature=health_ocr",
-                    },
-                },
-                {
-                    "type": "button",
-                    "style": "secondary",
-                    "height": "sm",
+                    "color": button_color,
                     "action": medicine_action,
                 },
             ],
         },
     }
+
+
+def medguard_features_bubble(medicine_url=None, locked=False):
+    return medguard_ai_bubble(medicine_url, locked)
 
 
 def feature_row(title, description, color):
