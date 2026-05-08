@@ -57,17 +57,24 @@ def register_flex(register_url=None):
     return member_management_bubble(register_url)
 
 
-def features_bubbles(register_url=None, medicine_url=None, medguard_locked=False):
+def features_bubbles(register_url=None, medicine_url=None, carebot_url=None, medguard_locked=False, carebot_locked=False):
     return [
         member_management_bubble(register_url),
         medguard_ai_bubble(medicine_url, locked=medguard_locked),
+        carebot_bubble(carebot_url, locked=carebot_locked),
     ]
 
 
-def features_carousel_flex(register_url=None, medicine_url=None, medguard_locked=False):
+def features_carousel_flex(register_url=None, medicine_url=None, carebot_url=None, medguard_locked=False, carebot_locked=False):
     return {
         "type": "carousel",
-        "contents": features_bubbles(register_url, medicine_url, medguard_locked),
+        "contents": features_bubbles(
+            register_url,
+            medicine_url,
+            carebot_url,
+            medguard_locked,
+            carebot_locked,
+        ),
     }
 
 
@@ -117,9 +124,10 @@ def medguard_ai_bubble(medicine_url=None, locked=False):
                     "contents": [
                         {
                             "type": "text",
-                            "text": "🛡️",
+                            "text": "Madguard AI 🛡️",
                             "size": "xxl",
                             "align": "center",
+                            "color": "#ffffff"
                         }
                     ],
                 },
@@ -171,6 +179,110 @@ def medguard_ai_bubble(medicine_url=None, locked=False):
 
 def medguard_features_bubble(medicine_url=None, locked=False):
     return medguard_ai_bubble(medicine_url, locked)
+
+
+def carebot_bubble(carebot_url=None, locked=False):
+    action = {
+        "type": "postback",
+        "label": "เริ่มประเมินใจ",
+        "data": "feature=carebot",
+    }
+    button_color = "#55b82e"
+    hero_color = "#0f8f8c"
+    description = "แบบประเมินสุขภาพจิต PHQ-9 พร้อมสรุปผลและพื้นที่คุยต่ออย่างอ่อนโยน"
+
+    if locked:
+        action = {
+            "type": "postback",
+            "label": "จัดการสมาชิกก่อน",
+            "data": "feature=carebot_membership_required",
+        }
+        button_color = "#9aa8a0"
+        hero_color = "#7d8b83"
+        description = "กรุณาจัดการข้อมูลสมาชิกในกลุ่มก่อน แล้วค่อยใช้งาน CareBot"
+    elif carebot_url:
+        action = {
+            "type": "uri",
+            "label": "เริ่มประเมินใจ",
+            "uri": carebot_url,
+        }
+
+    return {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "20px",
+            "backgroundColor": "#f7fdf1",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "height": "72px",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "backgroundColor": hero_color,
+                    "cornerRadius": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "แบบประเมินใจ ❤️",
+                            "size": "xxl",
+                            "weight": "bold",
+                            "color": "#ffffff",
+                            "align": "center",
+                        }
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": "CareBot Health",
+                    "weight": "bold",
+                    "size": "lg",
+                    "color": "#14301f",
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
+                    "text": description,
+                    "size": "sm",
+                    "color": "#5b725f",
+                    "wrap": True,
+                },
+                {
+                    "type": "separator",
+                    "color": "#d8ead3",
+                },
+                feature_row(
+                    "PHQ-2 / PHQ-9",
+                    "เริ่มคัดกรองทีละข้อ ใช้เวลาไม่นาน",
+                    "#0f8f8c",
+                ),
+                feature_row(
+                    "Assessment Result",
+                    "สรุปคะแนนและระดับอาการให้อ่านง่าย",
+                    "#55b82e",
+                ),
+                feature_row(
+                    "CareBot Chat",
+                    "คุยต่อเพื่อรับคำแนะนำเบื้องต้นหลังประเมิน",
+                    "#3267b7",
+                ),
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "color": button_color,
+                    "action": action,
+                },
+            ],
+        },
+    }
+
+
+def cerebot_bubble(carebot_url=None, locked=False):
+    return carebot_bubble(carebot_url, locked)
 
 
 def feature_row(title, description, color):

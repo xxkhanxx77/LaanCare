@@ -1,4 +1,5 @@
 try:
+    from .carebot import CareBotError, generate_carebot_reply, get_carebot_payload, get_phq9_result
     from .config import *
     from .flex import *
     from .medguard_ocr import OCRServiceError, perform_health_ocr
@@ -7,9 +8,11 @@ try:
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
+        list_carebot_assessments,
         list_medicines,
         list_ocr_results,
         list_registrations,
+        save_carebot_assessment,
         save_medicine_item,
         save_medicine_items,
         save_ocr_result,
@@ -17,6 +20,7 @@ try:
         update_registration,
     )
 except ImportError:
+    from carebot import CareBotError, generate_carebot_reply, get_carebot_payload, get_phq9_result
     from config import *
     from flex import *
     from medguard_ocr import OCRServiceError, perform_health_ocr
@@ -25,9 +29,11 @@ except ImportError:
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
+        list_carebot_assessments,
         list_medicines,
         list_ocr_results,
         list_registrations,
+        save_carebot_assessment,
         save_medicine_item,
         save_medicine_items,
         save_ocr_result,
@@ -196,6 +202,129 @@ def registration_detail_api(registration_id):
     )
 
     return jsonify({"success": True, "registration": updated_registration})
+
+
+@app.get("/carebot")
+def carebot():
+    return render_template(
+        "carebot.html",
+        group_id=request.args.get("group_id", "").strip(),
+        line_user_id=request.args.get("line_user_id", "").strip(),
+        carebot_payload=get_carebot_payload(),
+    )
+
+
+@app.route("/api/carebot/assessments", methods=["GET", "POST"])
+def carebot_assessments_api():
+    if request.method == "POST":
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"success": False, "error": "Expected JSON object"}), 400
+
+        responses = payload.get("responses")
+        assessment_type = normalize_registration_input(payload.get("type") or payload.get("assessment_type"))
+        score = payload.get("score")
+        if not isinstance(responses, dict):
+            return jsonify({"success": False, "error": "responses must be an object"}), 400
+        if assessment_type not in {"PHQ-2", "PHQ-9"}:
+            return jsonify({"success": False, "error": "assessment type must be PHQ-2 or PHQ-9"}), 400
+
+        try:
+            score = int(score)
+        except (TypeError, ValueError):
+            return jsonify({"success": False, "error": "score must be a number"}), 400
+
+        assessment_id = save_carebot_assessment(
+            {
+                "group_id": normalize_registration_input(payload.get("group_id")) or None,
+                "line_user_id": normalize_registration_input(payload.get("line_user_id")) or None,
+                "assessment_type": assessment_type,
+                "score": score,
+                "responses": responses,
+            }
+        )
+        return jsonify({"success": True, "assessment_id": assessment_id}), 201
+
+    group_id = request.args.get("group_id", "").strip() or None
+    return jsonify({"assessments": list_carebot_assessments(group_id)})
+
+
+@app.post("/api/carebot/chat")
+def carebot_chat_api():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"success": False, "error": "Expected JSON object"}), 400
+
+    message = normalize_registration_input(payload.get("message"))
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    if not message:
+        return jsonify({"success": False, "error": "message is required"}), 400
+
+    try:
+        response_text = generate_carebot_reply(message, history, context)
+    except CareBotError as error:
+        return jsonify({"success": False, "error": str(error)}), 502
+
+    return jsonify({"success": True, "response": response_text})
+
+
+@app.post("/save-assessment")
+def legacy_save_assessment_api():
+    payload = request.get_json(silent=True) or {}
+    payload.setdefault("assessment_type", payload.get("type"))
+    if "group_id" not in payload:
+        payload["group_id"] = None
+    if "line_user_id" not in payload:
+        payload["line_user_id"] = None
+
+    responses = payload.get("responses")
+    assessment_type = normalize_registration_input(payload.get("type") or payload.get("assessment_type"))
+    try:
+        score = int(payload.get("score"))
+    except (TypeError, ValueError):
+        return jsonify({"detail": "score must be a number"}), 400
+
+    if not isinstance(responses, dict):
+        return jsonify({"detail": "responses must be an object"}), 400
+    if assessment_type not in {"PHQ-2", "PHQ-9"}:
+        return jsonify({"detail": "assessment type must be PHQ-2 or PHQ-9"}), 400
+
+    save_carebot_assessment(
+        {
+            "group_id": normalize_registration_input(payload.get("group_id")) or None,
+            "line_user_id": normalize_registration_input(payload.get("line_user_id")) or None,
+            "assessment_type": assessment_type,
+            "score": score,
+            "responses": responses,
+        }
+    )
+    return jsonify({"status": "success", "message": "Assessment saved successfully"})
+
+
+@app.get("/results")
+def legacy_carebot_results_api():
+    return jsonify(list_carebot_assessments())
+
+
+@app.post("/chat")
+def legacy_carebot_chat_api():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"detail": "Expected JSON object"}), 400
+
+    message = normalize_registration_input(payload.get("message"))
+    history = payload.get("history") if isinstance(payload.get("history"), list) else []
+    context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    if not message:
+        return jsonify({"detail": "message is required"}), 400
+
+    try:
+        response_text = generate_carebot_reply(message, history, context)
+    except CareBotError as error:
+        return jsonify({"detail": str(error)}), 502
+
+    return jsonify({"response": response_text})
 
 
 @app.route("/medicines", methods=["GET", "POST"])
@@ -544,6 +673,18 @@ def build_medicine_url(group_id):
     return f"{base_url}/medicines?{urlencode({'group_id': group_id})}"
 
 
+def build_carebot_url(group_id=None, line_user_id=None):
+    base_url = PUBLIC_BASE_URL or request.url_root.strip("/")
+    params = {}
+    if group_id:
+        params["group_id"] = group_id
+    if line_user_id:
+        params["line_user_id"] = line_user_id
+
+    query = f"?{urlencode(params)}" if params else ""
+    return f"{base_url}/carebot{query}"
+
+
 def get_source_group_id(source):
     return getattr(source, "group_id", None) or getattr(source, "room_id", None)
 
@@ -573,7 +714,7 @@ def build_feature_reply(postback_data):
     replies = {
         "health_ocr": "ส่งรูปฉลากยา หน้าจอวัดความดัน หน้าจอวัดน้ำตาล อาหาร หรือใบนัดหมอมาในแชทนี้ได้เลยครับ เดี๋ยวผมจะส่งรูปไปวิเคราะห์ผ่าน MedGuard AI",
         "medicine_management": "เมนูจัดการยาจะใช้สำหรับดู เพิ่ม และลบรายการยาที่คนไข้ใช้ปัจจุบันครับ",
-        "membership_required": "ขอจัดการสมาชิกในกลุ่มก่อนนะค้าบ แล้วค่อยเปิดใช้ MedGuard AI ต่อได้เลย",
+        "membership_required": "รบกวนจัดการสมาชิกในกลุ่มก่อนนะค้าบบบ",
     }
 
     return replies.get(feature)
@@ -613,12 +754,16 @@ def join_event(event):
     # reply_token = event.reply_token
     register_url = build_register_url(group_id) if group_id else None
     medicine_url = build_medicine_url(group_id) if group_id else None
+    carebot_url = build_carebot_url(group_id) if group_id else None
+    has_registered_members = group_has_registered_members(group_id)
     flex_message = FlexSendMessage(
         alt_text="น้องพิล features",
         contents=features_carousel_flex(
             register_url,
             medicine_url,
-            medguard_locked=not group_has_registered_members(group_id),
+            carebot_url,
+            medguard_locked=not has_registered_members,
+            carebot_locked=not has_registered_members,
         ),
     )
     print(flex_message)
@@ -633,18 +778,37 @@ def join_event(event):
 def handle_message(event):
     if isinstance(event.message, TextMessage):
         message_text = event.message.text.strip()
+        normalized_text = message_text.lower()
 
         if message_text == "น้องพิล":
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=TextSendMessage(
+                    text=(
+                        "น้องพิลมาแล้วค้าบ เรียกใช้งานด้วย keyword เหล่านี้ได้เลย\n\n"
+                        "• จัดการสมาชิก - เพิ่ม/แก้ไขข้อมูลสมาชิกในกลุ่ม\n"
+                        "• MedGuard AI - วิเคราะห์รูปสุขภาพและจัดการยา\n"
+                        "• CareBot - ทำแบบประเมินสุขภาพจิต"
+                    )
+                ),
+            )
+            return
+
+        if normalized_text in {"medguard ai", "madguard ai", "medguard", "madguard"}:
             group_id = get_source_group_id(event.source)
             medicine_url = build_medicine_url(group_id) if group_id else None
+            is_locked = not group_has_registered_members(group_id)
             flex_message = FlexSendMessage(
                 alt_text="MedGuard AI",
-                contents=medguard_ai_bubble(medicine_url),
+                contents=medguard_ai_bubble(medicine_url, locked=is_locked),
             )
+            intro_text = "MedGuard AI พร้อมช่วยดูรูปสุขภาพและรายการยาแล้วค้าบ"
+            if is_locked:
+                intro_text = "ก่อนใช้ MedGuard AI ขอจัดการสมาชิกในกลุ่มให้เรียบร้อยก่อนนะค้าบ"
             line_bot_api.reply_message(
                 event.reply_token,
                 messages=[
-                    TextSendMessage(text="น้องพิลมาแล้วค้าบ วันนี้ให้ MedGuard AI ช่วยดูแลเรื่องสุขภาพให้นะ"),
+                    TextSendMessage(text=intro_text),
                     flex_message,
                 ],
             )
@@ -662,6 +826,27 @@ def handle_message(event):
                 event.reply_token,
                 messages=[
                     TextSendMessage(text="ได้เลยค้าบ มาอัปเดตข้อมูลสมาชิกในกลุ่มกัน"),
+                    flex_message,
+                ],
+            )
+            return
+
+        if normalized_text in {"carebot", "cerebot", "แคร์บอท", "แคร์บอต"}:
+            group_id = get_source_group_id(event.source)
+            line_user_id = getattr(event.source, "user_id", None)
+            carebot_url = build_carebot_url(group_id, line_user_id)
+            is_locked = not group_has_registered_members(group_id)
+            flex_message = FlexSendMessage(
+                alt_text="CareBot Health",
+                contents=carebot_bubble(carebot_url, locked=is_locked),
+            )
+            intro_text = "CareBot มาแล้วค้าบ ค่อย ๆ เช็กใจไปด้วยกันนะ"
+            if is_locked:
+                intro_text = "ก่อนเริ่ม CareBot ขอจัดการสมาชิกในกลุ่มให้เรียบร้อยก่อนนะค้าบ"
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text=intro_text),
                     flex_message,
                 ],
             )
@@ -717,7 +902,30 @@ def handle_postback(event):
 
         line_bot_api.reply_message(
             event.reply_token,
-            messages=TextSendMessage(text="ขอจัดการสมาชิกในกลุ่มก่อนนะค้าบ แล้วค่อยเปิดใช้ MedGuard AI ต่อได้เลย"),
+            messages=TextSendMessage(text="รบกวนจัดการสมาชิกในกลุ่มก่อนนะค้าบบบ"),
+        )
+        return
+
+    if get_postback_feature(postback_data) == "carebot_membership_required":
+        group_id = get_source_group_id(event.source)
+        if group_has_registered_members(group_id):
+            carebot_url = build_carebot_url(group_id, user_id)
+            flex_message = FlexSendMessage(
+                alt_text="CareBot Health",
+                contents=carebot_bubble(carebot_url),
+            )
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text="เจอสมาชิกในกลุ่มแล้วค้าบ เปิด CareBot ให้เลยนะ"),
+                    flex_message,
+                ],
+            )
+            return
+
+        line_bot_api.reply_message(
+            event.reply_token,
+            messages=TextSendMessage(text="รบกวนจัดการสมาชิกในกลุ่มก่อนนะค้าบบบ"),
         )
         return
 
