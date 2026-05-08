@@ -65,6 +65,11 @@ def home():
 # TEST
 
 
+@app.get("/health")
+def health():
+    return jsonify({"status": "ok"})
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     if request.method == "GET":
