@@ -1,0 +1,66 @@
+{
+  "drugs": [
+    {
+      "name": "Aspirin",
+      "group": "NSAIDs",
+      "interactions": [
+        {
+          "target": "Warfarin",
+          "risk": "เสี่ยงต่อการเกิดเลือดออกในทางเดินอาหารและอวัยวะต่างๆ สูงขึ้นอย่างมาก (Increased Bleeding Risk)",
+          "severity": "High"
+        },
+        {
+          "target": "Ibuprofen",
+          "risk": "อาจทำให้ประสิทธิภาพการป้องกันโรคหัวใจของ Aspirin ลดลง (Reduced Cardio-protection)",
+          "severity": "Medium"
+        }
+      ]
+    },
+    {
+      "name": "Warfarin",
+      "group": "Anticoagulants",
+      "interactions": [
+        {
+          "target": "Aspirin",
+          "risk": "เสี่ยงต่อการเกิดเลือดออกรุนแรง (Major Bleeding Risk)",
+          "severity": "High"
+        },
+        {
+          "target": "Ibuprofen",
+          "risk": "เสี่ยงต่อการเกิดเลือดออก (Increased Bleeding Risk)",
+          "severity": "High"
+        }
+      ]
+    },
+    {
+      "name": "Ibuprofen",
+      "group": "NSAIDs",
+      "interactions": [
+        {
+          "target": "Aspirin",
+          "risk": "ลดประสิทธิภาพของ Aspirin และเพิ่มความเสี่ยงต่อโรคกระเพาะ",
+          "severity": "Medium"
+        },
+        {
+          "target": "Warfarin",
+          "risk": "เพิ่มความเสี่ยงต่อการเกิดเลือดออก",
+          "severity": "High"
+        }
+      ]
+    },
+    {
+      "name": "Paracetamol",
+      "group": "Analgesics",
+      "interactions": [
+        {
+          "target": "Alcohol",
+          "risk": "เพิ่มความเสี่ยงต่อความเป็นพิษต่อตับ (Hepatotoxicity)",
+          "severity": "High"
+        }
+      ]
+    }
+  ],
+  "general_warnings": {
+    "NSAIDs": "ควรระมัดระวังการใช้ในผู้ที่มีประวัติโรคกระเพาะอาหารหรือโรคไต"
+  }
+}
