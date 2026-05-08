@@ -199,7 +199,8 @@
 
 .ocr-panel,
 .result-panel,
-.medicine-inventory {
+.medicine-inventory,
+.medicine-alerts {
     display: grid;
     gap: 18px;
     border-top: 1px solid rgba(40, 125, 52, 0.18);
@@ -207,7 +208,8 @@
 }
 
 .result-panel,
-.medicine-inventory {
+.medicine-inventory,
+.medicine-alerts {
     margin-top: 22px;
 }
 
@@ -409,6 +411,54 @@
     display: none;
 }
 
+.alert-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.alert-schedule-list {
+    display: grid;
+    gap: 12px;
+}
+
+.alert-schedule-item {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: 14px;
+    align-items: center;
+}
+
+.alert-time {
+    display: grid;
+    min-height: 74px;
+    place-items: center;
+    border: 1px solid rgba(15, 143, 140, 0.2);
+    border-radius: 8px;
+    background: rgba(232, 250, 248, 0.72);
+    text-align: center;
+}
+
+.alert-time strong {
+    color: #14301f;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.alert-time span {
+    color: #0f8f8c;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    padding: 0 8px;
+}
+
+.alert-targets {
+    color: #287d34;
+    font-weight: 700;
+}
+
 @media (max-width: 760px) {
     .medicine-layout,
     .medicine-fields,
@@ -438,5 +488,13 @@
 
     .upload-preview {
         min-height: 150px;
+    }
+
+    .alert-actions {
+        justify-content: flex-start;
+    }
+
+    .alert-schedule-item {
+        grid-template-columns: 1fr;
     }
 }

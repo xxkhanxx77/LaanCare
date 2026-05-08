@@ -128,6 +128,22 @@
                 <div id="medicine-list" class="medicine-list"></div>
                 <p id="empty-medicines" class="empty-state" hidden>ยังไม่มีรายการยาในกลุ่มนี้</p>
             </section>
+
+            <section class="medicine-alerts" aria-labelledby="alert-title">
+                <div class="section-header">
+                    <div>
+                        <p class="item-kicker">Proactive Alerts</p>
+                        <h2 id="alert-title">ตารางแจ้งเตือนกินยา</h2>
+                    </div>
+                    <div class="alert-actions">
+                        <button id="run-alerts" class="secondary-button compact-button" type="button">เช็กเวลานี้</button>
+                        <button id="refresh-alerts" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                    </div>
+                </div>
+
+                <div id="alert-schedule-list" class="alert-schedule-list"></div>
+                <p id="empty-alerts" class="empty-state" hidden>ยังไม่มีรายการยาที่แปลงเป็นเวลาแจ้งเตือนได้</p>
+            </section>
         </section>
     </main>
 
@@ -149,6 +165,10 @@
         const medicineList = document.getElementById('medicine-list');
         const emptyMedicines = document.getElementById('empty-medicines');
         const refreshMedicines = document.getElementById('refresh-medicines');
+        const alertScheduleList = document.getElementById('alert-schedule-list');
+        const emptyAlerts = document.getElementById('empty-alerts');
+        const refreshAlerts = document.getElementById('refresh-alerts');
+        const runAlerts = document.getElementById('run-alerts');
 
         const detectedLabels = {
             medicine: 'ยา',
@@ -316,13 +336,16 @@
 
                 setMessage('บันทึกรายการยาแล้ว', 'success');
                 await loadMedicines();
+                await loadAlertSchedule();
             } catch (error) {
                 setMessage(error.message);
             }
         }
 
         async function loadMedicines() {
-            const response = await fetch(`/api/medicines?group_id=${encodeURIComponent(groupId)}`);
+            const response = await fetch(`/api/medicines?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
             const payload = await response.json();
             const medicines = payload.medicines || [];
 
@@ -358,7 +381,10 @@
             setMessage('');
 
             try {
-                const response = await fetch(`/api/medicines/${medicineId}`, { method: 'DELETE' });
+                const response = await fetch(`/api/medicines/${medicineId}?group_id=${encodeURIComponent(groupId)}`, {
+                    method: 'DELETE',
+                    cache: 'no-store',
+                });
                 const payload = await response.json();
 
                 if (!response.ok || !payload.success) {
@@ -367,8 +393,85 @@
 
                 setMessage('ลบรายการยาแล้ว', 'success');
                 await loadMedicines();
+                await loadAlertSchedule();
             } catch (error) {
                 setMessage(error.message);
+            }
+        }
+
+        async function loadAlertSchedule() {
+            const response = await fetch(`/api/medicine-alerts/schedule?group_id=${encodeURIComponent(groupId)}`, {
+                cache: 'no-store',
+            });
+            const payload = await response.json();
+            const schedule = payload.schedule || [];
+
+            alertScheduleList.innerHTML = '';
+            emptyAlerts.hidden = schedule.length > 0;
+
+            schedule.forEach((alert) => {
+                const item = document.createElement('article');
+                item.className = 'medicine-item alert-schedule-item';
+                item.innerHTML = `
+                    <div class="alert-time">
+                        <strong></strong>
+                        <span></span>
+                    </div>
+                    <div class="inventory-copy">
+                        <p class="item-kicker">Medicine Alert</p>
+                        <h3></h3>
+                        <p class="medicine-meta"></p>
+                        <p class="medicine-meta alert-targets"></p>
+                    </div>
+                `;
+                item.querySelector('.alert-time strong').textContent = alert.time || '-';
+                item.querySelector('.alert-time span').textContent = alert.slot_label || '-';
+                item.querySelector('h3').textContent = alert.medicine_name || '-';
+                item.querySelectorAll('.medicine-meta')[0].textContent = [
+                    alert.dosage,
+                    alert.take_time,
+                ].filter(Boolean).join(' · ');
+                item.querySelector('.alert-targets').textContent = [
+                    `Patient: ${formatNames(alert.patients)}`,
+                    `Caregiver: ${formatNames(alert.caregivers)}`,
+                ].join(' · ');
+                alertScheduleList.appendChild(item);
+            });
+        }
+
+        function formatNames(members) {
+            const names = (members || []).map((member) => member.name).filter(Boolean);
+            return names.length ? names.join(', ') : '-';
+        }
+
+        async function runDueAlerts() {
+            setMessage('');
+            runAlerts.disabled = true;
+            runAlerts.textContent = 'กำลังเช็ก...';
+
+            try {
+                const response = await fetch('/api/medicine-alerts/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ group_id: groupId }),
+                });
+                const payload = await response.json();
+
+                if (!response.ok || !payload.success) {
+                    throw new Error(payload.error || 'เช็กแจ้งเตือนไม่สำเร็จ');
+                }
+
+                const sentCount = (payload.results || []).filter((item) => item.status === 'sent').length;
+                const dueCount = (payload.alerts || []).length;
+                setMessage(
+                    dueCount ? `พบ ${dueCount} alert ที่ถึงเวลา ส่งสำเร็จ ${sentCount} รายการ` : 'ตอนนี้ยังไม่มี alert ที่ถึงเวลา',
+                    'success',
+                );
+            } catch (error) {
+                setMessage(error.message);
+            } finally {
+                runAlerts.disabled = false;
+                runAlerts.textContent = 'เช็กเวลานี้';
             }
         }
 
@@ -388,7 +491,10 @@
         ocrForm.addEventListener('submit', submitOcr);
         saveMedicineForm.addEventListener('submit', saveMedicine);
         refreshMedicines.addEventListener('click', loadMedicines);
+        refreshAlerts.addEventListener('click', loadAlertSchedule);
+        runAlerts.addEventListener('click', runDueAlerts);
         loadMedicines();
+        loadAlertSchedule();
     </script>
 </body>
 </html>

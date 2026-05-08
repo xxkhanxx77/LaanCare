@@ -3,20 +3,29 @@ try:
     from .config import *
     from .flex import *
     from .medguard_ocr import OCRServiceError, perform_health_ocr
+    from .medicine_alerts import (
+        build_medicine_alert_schedule,
+        collect_due_medicine_alerts,
+        recent_medicine_alert_logs,
+        run_medicine_alerts,
+        start_medicine_alert_worker,
+    )
     from .ocr_engine import check_interactions
     from .symptom_db import ChatDatabase
     from .symptom_ems_loader import EmsCorpus
     from .symptom_engine import ChatEngine
-    from .symptom_gemini_client import GeminiClient
+    from .symptom_openai_client import OpenAIJsonClient
     from .storage import (
         delete_medicine,
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
         list_carebot_assessments,
+        list_medicine_alert_action_logs,
         list_medicines,
         list_ocr_results,
         list_registrations,
+        record_medicine_alert_action,
         save_carebot_assessment,
         save_medicine_item,
         save_medicine_items,
@@ -29,20 +38,29 @@ except ImportError:
     from config import *
     from flex import *
     from medguard_ocr import OCRServiceError, perform_health_ocr
+    from medicine_alerts import (
+        build_medicine_alert_schedule,
+        collect_due_medicine_alerts,
+        recent_medicine_alert_logs,
+        run_medicine_alerts,
+        start_medicine_alert_worker,
+    )
     from ocr_engine import check_interactions
     from symptom_db import ChatDatabase
     from symptom_ems_loader import EmsCorpus
     from symptom_engine import ChatEngine
-    from symptom_gemini_client import GeminiClient
+    from symptom_openai_client import OpenAIJsonClient
     from storage import (
         delete_medicine,
         delete_registration,
         get_registration,
         get_registration_by_line_user_id,
         list_carebot_assessments,
+        list_medicine_alert_action_logs,
         list_medicines,
         list_ocr_results,
         list_registrations,
+        record_medicine_alert_action,
         save_carebot_assessment,
         save_medicine_item,
         save_medicine_items,
@@ -90,8 +108,8 @@ def get_symptom_engine():
     if _symptom_engine is None:
         symptom_db = ChatDatabase(SYMPTOM_DB_PATH)
         symptom_corpus = EmsCorpus(SYMPTOM_DIR)
-        symptom_gemini = GeminiClient()
-        _symptom_engine = ChatEngine(symptom_db, symptom_corpus, symptom_gemini)
+        symptom_llm = OpenAIJsonClient()
+        _symptom_engine = ChatEngine(symptom_db, symptom_corpus, symptom_llm)
     return _symptom_engine
 
 
@@ -115,6 +133,7 @@ def decode_symptom_session(session):
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
 line_bot_api = LineBotApi(channel_access_token=LINE_ACCESS_TOKEN, timeout=3)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
+start_medicine_alert_worker(line_bot_api, app.logger)
 
 @app.route('/')
 def home():
@@ -329,7 +348,7 @@ def symptom_chat_health_api():
         {
             "ok": True,
             "db": str(symptom_engine.db.db_path),
-            "gemini_status": symptom_engine.gemini.status(),
+            "llm_status": symptom_engine.llm.status(),
             "groups_loaded": len(symptom_engine.corpus.groups),
         }
     )
@@ -347,7 +366,7 @@ def symptom_chat_bootstrap_api():
             "user": decode_symptom_user(user),
             "session": decode_symptom_session(session),
             "alerts": symptom_engine.db.alerts_for_user(user_id),
-            "gemini": symptom_engine.gemini.status(),
+            "llm": symptom_engine.llm.status(),
             "groups_loaded": len(symptom_engine.corpus.groups),
         }
     )
@@ -557,10 +576,81 @@ def medicines_api():
 
 @app.delete("/api/medicines/<int:medicine_id>")
 def medicine_delete_api(medicine_id):
-    if not delete_medicine(medicine_id):
+    group_id = request.args.get("group_id", "").strip() or None
+    if not delete_medicine(medicine_id, group_id=group_id):
         return jsonify({"success": False, "error": "Medicine not found"}), 404
 
     return jsonify({"success": True, "deleted_id": medicine_id})
+
+
+@app.get("/api/medicine-alerts/schedule")
+def medicine_alert_schedule_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    return jsonify({"schedule": build_medicine_alert_schedule(group_id)})
+
+
+@app.get("/api/medicine-alerts/due")
+def medicine_alert_due_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    now = request.args.get("now", "").strip() or None
+    window_minutes = request.args.get("window_minutes", "").strip() or None
+
+    try:
+        window_minutes = int(window_minutes) if window_minutes else None
+        alerts = collect_due_medicine_alerts(group_id=group_id, at=now, window_minutes=window_minutes)
+    except (TypeError, ValueError) as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+
+    return jsonify({"success": True, "alerts": alerts})
+
+
+@app.post("/api/medicine-alerts/run")
+def medicine_alert_run_api():
+    payload = request.get_json(silent=True) or {}
+    group_id = normalize_registration_input(payload.get("group_id") or request.args.get("group_id")) or None
+    now = normalize_registration_input(payload.get("now") or request.args.get("now")) or None
+    window_minutes = payload.get("window_minutes") or request.args.get("window_minutes")
+    dry_run = truthy(payload.get("dry_run") if "dry_run" in payload else request.args.get("dry_run"))
+
+    try:
+        window_minutes = int(window_minutes) if window_minutes else None
+        result = run_medicine_alerts(
+            line_bot_api,
+            group_id=group_id,
+            at=now,
+            window_minutes=window_minutes,
+            dry_run=dry_run,
+        )
+    except (TypeError, ValueError) as error:
+        return jsonify({"success": False, "error": str(error)}), 400
+
+    return jsonify(result)
+
+
+@app.get("/api/medicine-alerts/logs")
+def medicine_alert_logs_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    limit = request.args.get("limit", "50").strip() or "50"
+
+    try:
+        limit = int(limit)
+    except ValueError:
+        limit = 50
+
+    return jsonify({"logs": recent_medicine_alert_logs(group_id=group_id, limit=limit)})
+
+
+@app.get("/api/medicine-alerts/action-logs")
+def medicine_alert_action_logs_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    limit = request.args.get("limit", "50").strip() or "50"
+
+    try:
+        limit = int(limit)
+    except ValueError:
+        limit = 50
+
+    return jsonify({"logs": list_medicine_alert_action_logs(group_id=group_id, limit=limit)})
 
 
 @app.post("/api/health-ocr")
@@ -757,6 +847,13 @@ def normalize_registration_input(value):
     return str(value).strip()
 
 
+def truthy(value):
+    if isinstance(value, bool):
+        return value
+
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def registration_data_from_values(values):
     return {
         "group_id": values["group_id"],
@@ -879,6 +976,28 @@ def get_postback_feature(postback_data):
         return None
 
     return payload.get("feature")
+
+
+def get_postback_json(postback_data):
+    try:
+        payload = json.loads(postback_data)
+    except (TypeError, json.JSONDecodeError):
+        return {}
+
+    return payload if isinstance(payload, dict) else {}
+
+
+def get_source_type(source):
+    return getattr(source, "type", None) or ""
+
+
+def get_source_id(source):
+    return (
+        getattr(source, "group_id", None)
+        or getattr(source, "room_id", None)
+        or getattr(source, "user_id", None)
+        or ""
+    )
 
 
 def build_feature_reply(postback_data):
@@ -1064,6 +1183,30 @@ def handle_postback(event):
     timestamp = event.timestamp
     event_type = event.type
     postback_data = event.postback.data
+    postback_payload = get_postback_json(postback_data)
+    if postback_payload.get("feature") == "medicine_alert" and postback_payload.get("action") == "taken":
+        action_log_id = record_medicine_alert_action(
+            {
+                "alert_log_id": postback_payload.get("alert_log_id"),
+                "group_id": get_source_group_id(event.source),
+                "medicine_id": postback_payload.get("medicine_id"),
+                "action": "taken",
+                "line_user_id": user_id,
+                "source_type": get_source_type(event.source),
+                "source_id": get_source_id(event.source),
+                "raw_payload": {
+                    "postback": postback_payload,
+                    "timestamp": timestamp,
+                    "event_type": event_type,
+                },
+            }
+        )
+        line_bot_api.reply_message(
+            event.reply_token,
+            messages=TextSendMessage(text=f"บันทึกแล้วครับ กินยาแล้ว log #{action_log_id}"),
+        )
+        return
+
     if is_register_postback(postback_data):
         group_id = get_source_group_id(event.source)
         if not group_id:

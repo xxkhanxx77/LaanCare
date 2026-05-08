@@ -1,3 +1,6 @@
+import json
+
+
 def member_management_bubble(register_url=None):
     action = {
         "type": "postback",
@@ -406,6 +409,155 @@ def symptom_chat_bubble(symptom_chat_url=None, locked=False):
 
 def chat_symtom_bubble(symptom_chat_url=None, locked=False):
     return symptom_chat_bubble(symptom_chat_url, locked)
+
+
+def medicine_alert_bubble(alert, alert_log_id=None):
+    patient_names = names_or_fallback(alert.get("patients"), "ยังไม่มีข้อมูล Patient")
+    caregiver_names = names_or_fallback(alert.get("caregivers"), "ยังไม่มีข้อมูล Caregiver")
+    dosage = alert.get("dosage") or "-"
+    scheduled_time = alert.get("scheduled_time") or alert.get("time") or "-"
+    slot_label = alert.get("slot_label") or "ถึงเวลากินยา"
+    mode_label = "TEST MODE" if alert.get("test_mode") else "MEDICINE ALERT"
+    action_payload = {
+        "feature": "medicine_alert",
+        "action": "taken",
+        "alert_log_id": alert_log_id,
+        "medicine_id": alert.get("medicine_id"),
+    }
+
+    return {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "20px",
+            "backgroundColor": "#f7fdf1",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "height": "66px",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "backgroundColor": "#0f8f8c",
+                    "cornerRadius": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "แจ้งเตือนกินยา",
+                            "size": "xl",
+                            "weight": "bold",
+                            "align": "center",
+                            "color": "#ffffff",
+                        },
+                        {
+                            "type": "text",
+                            "text": mode_label,
+                            "size": "xs",
+                            "align": "center",
+                            "color": "#d9fffb",
+                        },
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": alert.get("medicine_name") or "รายการยา",
+                    "weight": "bold",
+                    "size": "xl",
+                    "color": "#14301f",
+                    "wrap": True,
+                },
+                {
+                    "type": "box",
+                    "layout": "horizontal",
+                    "spacing": "sm",
+                    "contents": [
+                        medicine_alert_fact("เวลา", f"{slot_label} ({scheduled_time})", 2),
+                        medicine_alert_fact("ขนาด", dosage, 1),
+                    ],
+                },
+                {
+                    "type": "separator",
+                    "color": "#d8ead3",
+                },
+                medicine_alert_line("ผู้ป่วย", patient_names),
+                medicine_alert_line("ผู้ดูแล", caregiver_names),
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "color": "#55b82e",
+                    "action": {
+                        "type": "postback",
+                        "label": "กินแล้ว",
+                        "data": json.dumps(action_payload, ensure_ascii=False, separators=(",", ":")),
+                        "displayText": "กินยาแล้ว",
+                    },
+                },
+            ],
+        },
+    }
+
+
+def medicine_alert_fact(label, value, flex=1):
+    return {
+        "type": "box",
+        "layout": "vertical",
+        "flex": flex,
+        "spacing": "xs",
+        "paddingAll": "10px",
+        "backgroundColor": "#e8faf8",
+        "cornerRadius": "md",
+        "contents": [
+            {
+                "type": "text",
+                "text": label,
+                "size": "xs",
+                "weight": "bold",
+                "color": "#0f8f8c",
+            },
+            {
+                "type": "text",
+                "text": value,
+                "size": "sm",
+                "weight": "bold",
+                "color": "#14301f",
+                "wrap": True,
+            },
+        ],
+    }
+
+
+def medicine_alert_line(label, value):
+    return {
+        "type": "box",
+        "layout": "horizontal",
+        "spacing": "sm",
+        "contents": [
+            {
+                "type": "text",
+                "text": label,
+                "size": "xs",
+                "weight": "bold",
+                "color": "#5b725f",
+                "flex": 1,
+            },
+            {
+                "type": "text",
+                "text": value,
+                "size": "xs",
+                "color": "#14301f",
+                "wrap": True,
+                "flex": 3,
+            },
+        ],
+    }
+
+
+def names_or_fallback(members, fallback):
+    names = [member["name"] for member in members or [] if member.get("name")]
+    return ", ".join(names) if names else fallback
 
 
 def feature_row(title, description, color):

@@ -19,10 +19,10 @@ def load_system_prompt():
 
 
 class ChatEngine:
-    def __init__(self, db, corpus, gemini):
+    def __init__(self, db, corpus, llm):
         self.db = db
         self.corpus = corpus
-        self.gemini = gemini
+        self.llm = llm
         self.system_prompt = load_system_prompt()
 
     def handle_message(self, user_id, text, session_mode="self_checkin", user_can_chat=True, raw_payload=None):
@@ -311,14 +311,14 @@ class ChatEngine:
         config = self._config(user)
         candidates = self.corpus.deterministic_group_match(text)
         console.append(self._event("ems.retrieve", "deterministic retrieval from Symptoms markdown", {"candidates": candidates}))
-        if allow_llm and self.gemini.enabled and config.get("llm_retrieval_assist"):
-            assisted = self._assist_retrieval_with_gemini(text, user, previous, recent, session, candidates, console, usage_delta)
+        if allow_llm and self.llm.enabled and config.get("llm_retrieval_assist"):
+            assisted = self._assist_retrieval_with_llm(text, user, previous, recent, session, candidates, console, usage_delta)
             if assisted:
                 candidates = self._merge_candidates(candidates, assisted.get("candidates", []))
                 console.append(
                     self._event(
                         "ems.retrieve.assisted",
-                        "merged Gemini retrieval topics into deterministic candidate list",
+                        "merged OpenAI retrieval topics into deterministic candidate list",
                         {
                             "retrieval_topics": assisted.get("retrieval_topics", []),
                             "query_terms": assisted.get("query_terms", []),
@@ -329,21 +329,21 @@ class ChatEngine:
                 )
         deterministic_group_ids = self._context_adjusted_group_ids(text, self._distinct_candidate_group_ids(candidates)[:3], console)
         should_call_group_llm = allow_llm and (bool(config.get("llm_group_selection")) or not deterministic_group_ids)
-        if self.gemini.enabled and should_call_group_llm:
-            group_ids = self._select_groups_with_gemini(text, user, previous, recent, session, candidates, console, usage_delta)
+        if self.llm.enabled and should_call_group_llm:
+            group_ids = self._select_groups_with_llm(text, user, previous, recent, session, candidates, console, usage_delta)
             if group_ids:
                 return group_ids
         elif should_call_group_llm:
             console.append(
                 self._event(
                     "llm.group_selection.unavailable",
-                    "Gemini group selection was needed but Gemini is disabled",
+                    "OpenAI group selection was needed but OpenAI is disabled",
                     {
                         "llm_group_selection": bool(config.get("llm_group_selection")),
                         "deterministic_group_ids": deterministic_group_ids,
-                        "gemini_enabled": bool(self.gemini.enabled),
-                        "api_key_present": bool(getattr(self.gemini, "api_key", "")),
-                        "disabled_by_env": bool(getattr(self.gemini, "disabled_by_env", False)),
+                        "llm_enabled": bool(self.llm.enabled),
+                        "api_key_present": bool(getattr(self.llm, "api_key", "")),
+                        "disabled_by_env": bool(getattr(self.llm, "disabled_by_env", False)),
                     },
                 )
             )
@@ -384,7 +384,7 @@ class ChatEngine:
             )
         return group_ids
 
-    def _assist_retrieval_with_gemini(self, text, user, previous, recent, session, candidates, console, usage_delta):
+    def _assist_retrieval_with_llm(self, text, user, previous, recent, session, candidates, console, usage_delta):
         payload = {
             "message": text,
             "symptom_index": self.corpus.symptom_index_for_prompt(),
@@ -407,7 +407,7 @@ class ChatEngine:
                 "reason_for_backend": "short note, retrieval only, no diagnosis",
             },
         }
-        result = self.gemini.generate_json(
+        result = self.llm.generate_json(
             self.system_prompt,
             json.dumps(payload, ensure_ascii=False),
             "retrieval_assist",
@@ -421,7 +421,7 @@ class ChatEngine:
             console.append(
                 self._event(
                     "llm.retrieval_assist.low_confidence",
-                    "ignored Gemini retrieval assist because confidence was low",
+                    "ignored OpenAI retrieval assist because confidence was low",
                     {"confidence": confidence},
                 )
             )
@@ -446,7 +446,7 @@ class ChatEngine:
         console.append(
             self._event(
                 "llm.retrieval_assist",
-                "Gemini suggested retrieval topics and query terms before Markdown retrieval",
+                "OpenAI suggested retrieval topics and query terms before Markdown retrieval",
                 {
                     "retrieval_topics": topics,
                     "query_terms": terms,
@@ -484,7 +484,7 @@ class ChatEngine:
         merged.sort(key=lambda item: item.get("score", 0), reverse=True)
         return merged[:8]
 
-    def _select_groups_with_gemini(self, text, user, previous, recent, session, candidates, console, usage_delta):
+    def _select_groups_with_llm(self, text, user, previous, recent, session, candidates, console, usage_delta):
         payload = {
             "message": text,
             "symptom_index": self.corpus.symptom_index_for_prompt(),
@@ -512,7 +512,7 @@ class ChatEngine:
                 "reason_for_backend": "short note, no diagnosis",
             },
         }
-        result = self.gemini.generate_json(
+        result = self.llm.generate_json(
             self.system_prompt,
             json.dumps(payload, ensure_ascii=False),
             "group_selection",
@@ -531,7 +531,7 @@ class ChatEngine:
             console.append(
                 self._event(
                     "llm.group_selection",
-                    "Gemini selected symptom groups after backend validation",
+                    "OpenAI selected symptom groups after backend validation",
                     {
                         "group_ids": group_ids[:3],
                         "confidence": confidence,
@@ -686,7 +686,7 @@ class ChatEngine:
                 )
                 return group_id
         selected = candidates[0]["group_id"] if candidates and candidates[0]["score"] >= 3 else ""
-        if self.gemini.enabled and self._config(user).get("llm_group_selection"):
+        if self.llm.enabled and self._config(user).get("llm_group_selection"):
             payload = {
                 "message": text,
                 "symptom_index": self.corpus.symptom_index_for_prompt(),
@@ -696,7 +696,7 @@ class ChatEngine:
                 "user_personalized_prompt": user.get("personalized_prompt", ""),
                 "instruction": "Select one EMS group_id from symptom_index or return insufficient. Do not diagnose.",
             }
-            result = self.gemini.generate_json(
+            result = self.llm.generate_json(
                 self.system_prompt,
                 json.dumps(payload, ensure_ascii=False),
                 "group_selection",
@@ -711,7 +711,7 @@ class ChatEngine:
 
     def _select_group_deterministic(self, text, console):
         candidates = self.corpus.deterministic_group_match(text)
-        console.append(self._event("ems.retrieve", "deterministic retrieval before Gemini", {"candidates": candidates}))
+        console.append(self._event("ems.retrieve", "deterministic retrieval before OpenAI", {"candidates": candidates}))
         if candidates and candidates[0]["score"] >= 3:
             return candidates[0]["group_id"]
         return ""
@@ -967,10 +967,10 @@ class ChatEngine:
             return None
         candidates = self.corpus.deterministic_group_match(text)
         user = self.db.get_or_create_user(user_id)
-        if self.gemini.enabled and self._config(user).get("llm_retrieval_assist"):
+        if self.llm.enabled and self._config(user).get("llm_retrieval_assist"):
             previous = self.db.previous_summaries(user_id, limit=6)
             recent = self.db.recent_chat(session["session_id"], limit=12)
-            assisted = self._assist_retrieval_with_gemini(text, user, previous, recent, session, candidates, console, usage_delta)
+            assisted = self._assist_retrieval_with_llm(text, user, previous, recent, session, candidates, console, usage_delta)
             if assisted:
                 candidates = self._merge_candidates(candidates, assisted.get("candidates", []))
         candidate_group_ids = self._distinct_candidate_group_ids(candidates)
@@ -1991,7 +1991,7 @@ class ChatEngine:
                 }
                 for rule in rules
             }
-        if self.gemini.enabled and self._config(user).get("llm_first"):
+        if self.llm.enabled and self._config(user).get("llm_first"):
             payload = {
                 "purpose": "yellow_summary_eval",
                 "message": text,
@@ -2024,7 +2024,7 @@ class ChatEngine:
                     "If unclear, do not match the rule.",
                 ],
             }
-            result = self.gemini.generate_json(
+            result = self.llm.generate_json(
                 self.system_prompt,
                 json.dumps(payload, ensure_ascii=False),
                 "yellow_summary_eval",
@@ -2119,7 +2119,7 @@ class ChatEngine:
                 "confidence": 1,
                 "reason_for_backend": "local explicit yes/no answer for open-ended yellow question",
             }
-        if self.gemini.enabled and self._config(user).get("llm_first"):
+        if self.llm.enabled and self._config(user).get("llm_first"):
             payload = {
                 "purpose": "yellow_answer_eval",
                 "message": text,
@@ -2144,7 +2144,7 @@ class ChatEngine:
                     "If unclear, return matched=false and normalized_answer=unknown.",
                 ],
             }
-            result = self.gemini.generate_json(
+            result = self.llm.generate_json(
                 self.system_prompt,
                 json.dumps(payload, ensure_ascii=False),
                 "yellow_answer_eval",
@@ -2237,7 +2237,7 @@ class ChatEngine:
             console.append(
                 self._event(
                     "llm_triage.rule_match",
-                    "accepted Gemini rule match after Markdown validation",
+                    "accepted OpenAI rule match after Markdown validation",
                     {"group_id": group_id, "rule_id": rule["rule_id"], "risk_level": rule["level"]},
                 )
             )
@@ -2262,7 +2262,7 @@ class ChatEngine:
                     "matched": True,
                     "normalized_answer": "yes",
                     "confidence": float(llm_first.get("confidence", 0) or 0),
-                    "reason_for_backend": "Gemini matched yellow rule after Markdown validation; alert deferred until remaining checks complete",
+                    "reason_for_backend": "OpenAI matched yellow rule after Markdown validation; alert deferred until remaining checks complete",
                     "source_ref": rule.get("source_ref", ""),
                 }
                 console.append(
@@ -2288,7 +2288,7 @@ class ChatEngine:
             console.append(
                 self._event(
                     "llm_triage.ask",
-                    "asked Gemini-selected Markdown-backed question",
+                    "asked OpenAI-selected Markdown-backed question",
                     {"rule_id": planned["rule"]["rule_id"]},
                 )
             )
@@ -2320,7 +2320,7 @@ class ChatEngine:
                 console.append(
                     self._event(
                         "llm_triage.reject_rule",
-                        "rejected Gemini rule because it is not in active EMS Markdown group",
+                        "rejected OpenAI rule because it is not in active EMS Markdown group",
                         {"group_id": group["group_id"], "rule_id": rule_id},
                     )
                 )
@@ -2345,7 +2345,7 @@ class ChatEngine:
                 console.append(
                     self._event(
                         "llm_triage.reject_question",
-                        "rejected Gemini question because maps_to_rule_id is missing or invalid",
+                        "rejected OpenAI question because maps_to_rule_id is missing or invalid",
                         {"group_id": group["group_id"], "maps_to_rule_id": rule_id},
                     )
                 )
@@ -2358,7 +2358,7 @@ class ChatEngine:
                 console.append(
                     self._event(
                         "llm_triage.skip_question",
-                        "skipped Gemini question by self-check-in skip rule",
+                        "skipped OpenAI question by self-check-in skip rule",
                         {"rule_id": rule["rule_id"]},
                     )
                 )
@@ -2522,14 +2522,14 @@ class ChatEngine:
         long = ""
         status = "local_only"
         user = self.db.get_or_create_user(user_id)
-        if self.gemini.enabled and self._config(user).get("llm_session_summary"):
+        if self.llm.enabled and self._config(user).get("llm_session_summary"):
             raw = self.db.raw_chatlog(session["session_id"])
             payload = {
                 "state": state,
                 "chat_log": raw,
                 "instruction": "Create short_conclusion and long_conclusion for future memory. No diagnosis.",
             }
-            result = self.gemini.generate_json(
+            result = self.llm.generate_json(
                 self.system_prompt,
                 json.dumps(payload, ensure_ascii=False),
                 "session_summary",
@@ -2543,12 +2543,12 @@ class ChatEngine:
 
     def _llm_first(self, text, user, session, state, previous, recent, console, usage_delta):
         config = self._config(user)
-        if not (self.gemini.enabled and config.get("llm_first")):
+        if not (self.llm.enabled and config.get("llm_first")):
             console.append(
                 self._event(
                     "llm_first.skip",
-                    "LLM-first disabled or Gemini unavailable",
-                    {"enabled": bool(config.get("llm_first")), "gemini_enabled": self.gemini.enabled},
+                    "LLM-first disabled or OpenAI unavailable",
+                    {"enabled": bool(config.get("llm_first")), "llm_enabled": self.llm.enabled},
                 )
             )
             return None
@@ -2605,7 +2605,7 @@ class ChatEngine:
                 "natural_prefix_th must not ask a new medical question and must not include advice.",
             ],
         }
-        result = self.gemini.generate_json(
+        result = self.llm.generate_json(
             self.system_prompt,
             json.dumps(payload, ensure_ascii=False),
             "triage_planner",
@@ -2639,7 +2639,7 @@ class ChatEngine:
             "question_count": len(data.get("questions_to_ask_next") or []),
             "reason_for_backend": data.get("reason_for_backend", ""),
         }
-        console.append(self._event("llm_first.result", "Gemini interpreted current turn before deterministic flow", state["llm_first_last"]))
+        console.append(self._event("llm_first.result", "OpenAI interpreted current turn before deterministic flow", state["llm_first_last"]))
         return data
 
     def _candidate_group_rules_for_prompt(self, active_group_id, candidates):
@@ -2710,8 +2710,8 @@ class ChatEngine:
         self.db.record_llm_call(
             session["session_id"],
             user_id,
-            "gemini",
-            self.gemini.model,
+            "openai",
+            self.llm.model,
             purpose,
             usage,
             purpose,
@@ -2721,7 +2721,7 @@ class ChatEngine:
         console.append(
             self._event(
                 "llm." + purpose,
-                "Gemini call " + ("skipped" if result.get("skipped") else "completed"),
+                "OpenAI call " + ("skipped" if result.get("skipped") else "completed"),
                 {
                     "ok": result.get("ok"),
                     "error": result.get("error"),
@@ -2897,7 +2897,6 @@ class ChatEngine:
         return answer == "yes"
 
     def _answer_value(self, text, llm_first=None):
-        print(llm_first)
         if llm_first:
             normalized = (llm_first.get("normalized_answer") or "").strip().lower()
             if normalized in ("yes", "no"):
