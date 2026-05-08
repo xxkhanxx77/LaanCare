@@ -1,17 +1,18 @@
-import difflib
+import base64
 import io
 import json
 import os
 
 try:
     from .storage import list_medicines
+    from .drug_interaction import SEARCH_ENGINE, INTERACTIONS, find_interactions
 except ImportError:
     from storage import list_medicines
+    from drug_interaction import SEARCH_ENGINE, INTERACTIONS, find_interactions
 
 
 BASE_DIR = os.path.dirname(__file__)
-DRUG_KNOWLEDGE_PATH = os.path.join(BASE_DIR, "drug_knowledge.json")
-OCR_MODEL_NAMES = ["gemini-flash-lite-latest"]
+OCR_MODEL_NAMES = ["gpt-4o-mini"]
 
 OCR_PROMPT = """
 วิเคราะห์ภาพที่เกี่ยวกับสุขภาพนี้และระบุประเภท (medicine, blood_pressure, blood_glucose, food, หรือ appointment)
@@ -24,9 +25,9 @@ Output JSON Schema:
     "interpretation": "สรุปผลสั้นๆ เป็นภาษาไทย"
 }
 
-รายละเอียดฟิลด์ใน data (ให้เป็นภาษาไทย):
+รายละเอียดฟิลด์ใน data:
 - ถ้าเป็น 'medicine': {
-    "medication name": "ชื่อยาภาษาไทย",
+    "medication name": "ชื่อยาภาษาอังกฤษแบบ generic name เท่านั้น เช่น warfarin, ibuprofen, metformin; ห้ามใส่ชื่อไทย และถ้าหน้าฉลากมี salt/form เช่น sodium ให้แปลงเป็น generic หลัก เช่น warfarin",
     "number": 1,
     "frequency": ["เช้า", "กลางวัน", "เย็น", "ก่อนนอน"],
     "time of taking": ["ก่อนอาหาร", "หลังอาหาร"]
@@ -65,16 +66,17 @@ class LocalOCRError(Exception):
 
 
 def perform_ocr(image_bytes, group_id=None):
-    client = build_gemini_client()
+    client = build_openai_client()
     image = load_image(image_bytes)
-    response = generate_content(client, image)
-    extracted_data = parse_model_json(response.text)
+    response_text = generate_content(client, image, image_bytes)
+    extracted_data = parse_model_json(response_text)
     detected_type = extracted_data.get("type", "unknown")
     data = extracted_data.get("data", {})
     interaction_report = None
 
     if detected_type == "medicine":
-        medicine_name = data.get("medication name", data.get("name", "Unknown"))
+        medicine_name = get_medicine_name_for_interaction(data)
+        data["medication name"] = medicine_name
         interaction_report = check_interactions(medicine_name, group_id)
 
     return {
@@ -86,17 +88,25 @@ def perform_ocr(image_bytes, group_id=None):
     }
 
 
-def build_gemini_client():
-    api_key = os.getenv("GEMINI_API_KEY")
+def build_openai_client():
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise LocalOCRError("GEMINI_API_KEY is not configured")
+        raise LocalOCRError("OPENAI_API_KEY is not configured")
 
     try:
-        from google import genai
+        from openai import OpenAI
     except ImportError as error:
-        raise LocalOCRError("google-genai is not installed") from error
+        raise LocalOCRError("openai is not installed") from error
 
-    return genai.Client(api_key=api_key)
+    return OpenAI(api_key=api_key)
+
+
+def get_medicine_name_for_interaction(data):
+    for key in ("generic_name", "generic name", "genericName", "medication_name", "medication name", "name"):
+        value = str(data.get(key, "")).strip()
+        if value:
+            return value
+    return "Unknown"
 
 
 def load_image(image_bytes):
@@ -111,21 +121,48 @@ def load_image(image_bytes):
         raise LocalOCRError("Uploaded file is not a readable image") from error
 
 
-def generate_content(client, image):
+def generate_content(client, image, image_bytes):
     last_error = None
+    mime_type = image_mime_type(image)
+    encoded_image = base64.b64encode(image_bytes).decode("utf-8")
+    image_url = f"data:{mime_type};base64,{encoded_image}"
 
     for model_name in OCR_MODEL_NAMES:
         try:
-            response = client.models.generate_content(
+            response = client.chat.completions.create(
                 model=model_name,
-                contents=[OCR_PROMPT, image],
+                response_format={"type": "json_object"},
+                messages=[
+                    {
+                        "role": "system",
+                        "content": "You extract structured health information from images. Return JSON only.",
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": OCR_PROMPT},
+                            {"type": "image_url", "image_url": {"url": image_url}},
+                        ],
+                    },
+                ],
             )
             if response:
-                return response
+                return response.choices[0].message.content or ""
         except Exception as error:
             last_error = error
 
     raise LocalOCRError(f"All OCR models failed: {last_error}")
+
+
+def image_mime_type(image):
+    image_format = (getattr(image, "format", "") or "").lower()
+    return {
+        "jpeg": "image/jpeg",
+        "jpg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "gif": "image/gif",
+    }.get(image_format, "image/jpeg")
 
 
 def parse_model_json(text):
@@ -136,57 +173,33 @@ def parse_model_json(text):
         raise LocalOCRError("AI returned invalid data format") from error
 
 
-def load_drug_knowledge():
-    if not os.path.exists(DRUG_KNOWLEDGE_PATH):
-        return {"drugs": []}
-
-    try:
-        with open(DRUG_KNOWLEDGE_PATH, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except Exception:
-        return {"drugs": []}
-
-
-def get_closest_drug(name, drug_kb):
-    drugs = drug_kb.get("drugs", [])
-    if not drugs:
-        return None
-
-    names = [drug["name"] for drug in drugs]
-    matches = difflib.get_close_matches(name, names, n=1, cutoff=0.6)
-    if not matches:
-        return None
-
-    return next((drug for drug in drugs if drug["name"] == matches[0]), None)
-
-
 def check_interactions(new_medicine_name, group_id=None):
-    drug_kb = load_drug_knowledge()
     existing_medicine_names = [
         medicine["medicine_name"]
         for medicine in list_medicines(group_id)
         if medicine.get("medicine_name")
     ]
-    new_drug = get_closest_drug(new_medicine_name, drug_kb)
-    reports = []
 
-    if new_drug:
-        reports.append(f"ตรวจพบข้อมูลยา: {new_drug['name']}")
-
-        for existing_name in existing_medicine_names:
-            existing_drug = get_closest_drug(existing_name, drug_kb)
-            if not existing_drug:
-                continue
-
-            for interaction in new_drug.get("interactions", []):
-                if interaction["target"].lower() == existing_drug["name"].lower():
-                    reports.append(f"คำเตือน: พบความเสี่ยงระหว่าง {new_drug['name']} และ {existing_drug['name']}")
-                    reports.append(f"- รายละเอียด: {interaction['risk']}")
-                    reports.append(f"- ความรุนแรง: {interaction['severity']}")
-
-    if not reports:
+    new_match = SEARCH_ENGINE.match(new_medicine_name)
+    if not new_match.get("matched"):
         if not existing_medicine_names:
             return "ยังไม่มีการลงทะเบียนยาอื่นๆ ไม่พบความเสี่ยงที่ขัดกันในขณะนี้"
         return f"ไม่พบข้อมูลความเสี่ยงที่ขัดกันของ {new_medicine_name} ในฐานข้อมูลตัวอย่างของเรา"
 
+    existing_matches = [SEARCH_ENGINE.match(name) for name in existing_medicine_names]
+    detected = find_interactions([new_match] + existing_matches, INTERACTIONS)
+
+    matched_name = new_match["selected"]["generic_name"]
+    if not detected:
+        if not existing_medicine_names:
+            return "ยังไม่มีการลงทะเบียนยาอื่นๆ ไม่พบความเสี่ยงที่ขัดกันในขณะนี้"
+        return f"ไม่พบข้อมูลความเสี่ยงที่ขัดกันของ {matched_name} ในฐานข้อมูลตัวอย่างของเรา"
+
+    reports = [f"ตรวจพบข้อมูลยา: {matched_name}"]
+    for ix in detected:
+        reports.append(f"คำเตือน: พบความเสี่ยงระหว่าง {ix['group_1']} และ {ix['group_2']}")
+        reports.append(f"- รายละเอียด: {ix['interaction_risk']}")
+        reports.append(f"- ความรุนแรง: {ix['interaction_severity']}")
+        if ix.get("possible_symptoms"):
+            reports.append(f"- อาการที่อาจเกิดขึ้น: {ix['possible_symptoms']}")
     return "\n".join(reports)
