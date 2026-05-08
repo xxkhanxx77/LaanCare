@@ -203,6 +203,94 @@ def medguard_features_bubble(medicine_url=None, locked=False):
     return medguard_ai_bubble(medicine_url, locked)
 
 
+def report_bubble(report_url=None, locked=False):
+    action = {
+        "type": "postback",
+        "label": "เปิดรายงาน",
+        "data": "feature=report",
+    }
+    button_color = "#3267b7"
+    hero_color = "#14301f"
+    description = "Dashboard สรุป Patient, ยา, นัดหมาย, การตอบรับ alert และคะแนน CareBot"
+
+    if locked:
+        action = {
+            "type": "postback",
+            "label": "จัดการสมาชิกก่อน",
+            "data": "feature=membership_required",
+        }
+        button_color = "#9aa8a0"
+        hero_color = "#7d8b83"
+        description = "กรุณาจัดการข้อมูลสมาชิกในกลุ่มก่อน แล้วค่อยเปิดรายงาน"
+    elif report_url:
+        action = {
+            "type": "uri",
+            "label": "เปิดรายงาน",
+            "uri": report_url,
+        }
+
+    return {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "20px",
+            "backgroundColor": "#f7fdf1",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "height": "72px",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "backgroundColor": hero_color,
+                    "cornerRadius": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "Care Report",
+                            "size": "xxl",
+                            "weight": "bold",
+                            "align": "center",
+                            "color": "#ffffff",
+                        }
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": "รายงานภาพรวมผู้ป่วย",
+                    "weight": "bold",
+                    "size": "lg",
+                    "color": "#14301f",
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
+                    "text": description,
+                    "size": "sm",
+                    "color": "#5b725f",
+                    "wrap": True,
+                },
+                {
+                    "type": "separator",
+                    "color": "#d8ead3",
+                },
+                feature_row("Patient Overview", "รายชื่อ น้ำหนัก ส่วนสูง และข้อมูลผู้ดูแล", "#0f8f8c"),
+                feature_row("Alert Analytics", "กินยาแล้ว รับทราบนัด และจำนวน alert", "#55b82e"),
+                feature_row("CareBot Trend", "คะแนนประเมินสุขภาพใจล่าสุด", "#3267b7"),
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "color": button_color,
+                    "action": action,
+                },
+            ],
+        },
+    }
+
+
 def carebot_bubble(carebot_url=None, locked=False):
     action = {
         "type": "postback",

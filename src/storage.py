@@ -102,6 +102,19 @@ def init_db():
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS carebot_chat_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT,
+                line_user_id TEXT,
+                role TEXT NOT NULL,
+                message TEXT NOT NULL,
+                context_json TEXT DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            """
             CREATE TABLE IF NOT EXISTS medicine_alert_logs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 group_id TEXT NOT NULL,
@@ -1194,11 +1207,23 @@ def save_carebot_assessment(data):
     return cursor.lastrowid
 
 
-def list_carebot_assessments(group_id=None):
+def list_carebot_assessments(group_id=None, line_user_ids=None):
     init_db()
+    line_user_ids = [str(user_id).strip() for user_id in (line_user_ids or []) if str(user_id or "").strip()]
 
     with get_connection() as connection:
-        if group_id:
+        if group_id and line_user_ids:
+            placeholders = ", ".join("?" for _ in line_user_ids)
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM carebot_assessments
+                WHERE group_id = ? OR line_user_id IN ({placeholders})
+                ORDER BY created_at DESC, id DESC
+                """,
+                (group_id, *line_user_ids),
+            ).fetchall()
+        elif group_id:
             rows = connection.execute(
                 """
                 SELECT *
@@ -1207,6 +1232,17 @@ def list_carebot_assessments(group_id=None):
                 ORDER BY created_at DESC, id DESC
                 """,
                 (group_id,),
+            ).fetchall()
+        elif line_user_ids:
+            placeholders = ", ".join("?" for _ in line_user_ids)
+            rows = connection.execute(
+                f"""
+                SELECT *
+                FROM carebot_assessments
+                WHERE line_user_id IN ({placeholders})
+                ORDER BY created_at DESC, id DESC
+                """,
+                tuple(line_user_ids),
             ).fetchall()
         else:
             rows = connection.execute(
@@ -1224,3 +1260,72 @@ def list_carebot_assessments(group_id=None):
         assessments.append(assessment)
 
     return assessments
+
+
+def save_carebot_chat_log(data):
+    init_db()
+    created_at = datetime.now(timezone.utc).isoformat()
+    context_json = json.dumps(data.get("context", {}), ensure_ascii=False)
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO carebot_chat_logs (
+                group_id,
+                line_user_id,
+                role,
+                message,
+                context_json,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data.get("group_id"),
+                data.get("line_user_id"),
+                data["role"],
+                data["message"],
+                context_json,
+                created_at,
+            ),
+        )
+
+    return cursor.lastrowid
+
+
+def list_carebot_chat_logs(group_id=None, line_user_ids=None, limit=100):
+    init_db()
+    line_user_ids = [str(user_id).strip() for user_id in (line_user_ids or []) if str(user_id or "").strip()]
+    params = []
+    where = ""
+    if group_id and line_user_ids:
+        placeholders = ", ".join("?" for _ in line_user_ids)
+        where = f"WHERE group_id = ? OR line_user_id IN ({placeholders})"
+        params = [group_id, *line_user_ids]
+    elif group_id:
+        where = "WHERE group_id = ?"
+        params = [group_id]
+    elif line_user_ids:
+        placeholders = ", ".join("?" for _ in line_user_ids)
+        where = f"WHERE line_user_id IN ({placeholders})"
+        params = list(line_user_ids)
+
+    with get_connection() as connection:
+        rows = connection.execute(
+            f"""
+            SELECT *
+            FROM carebot_chat_logs
+            {where}
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (*params, int(limit)),
+        ).fetchall()
+
+    logs = []
+    for row in rows:
+        log = dict(row)
+        log["context"] = json.loads(log.pop("context_json") or "{}")
+        logs.append(log)
+
+    return logs

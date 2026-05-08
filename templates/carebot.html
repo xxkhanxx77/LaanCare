@@ -185,14 +185,12 @@
             }
 
             renderResults();
-            if (currentStep === 'PHQ9') {
-                saveAssessment();
-            }
+            saveAssessment();
         }
 
         async function saveAssessment() {
             try {
-                await fetch('/api/carebot/assessments', {
+                const response = await fetch('/api/carebot/assessments', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -203,8 +201,13 @@
                         responses,
                     }),
                 });
+                if (!response.ok) {
+                    throw new Error('Failed to save assessment');
+                }
+                setMessage('บันทึกผลแบบประเมินแล้ว', 'success');
             } catch (error) {
                 console.error('Failed to save assessment:', error);
+                setMessage('บันทึกผลไม่สำเร็จ กรุณาลองใหม่อีกครั้ง');
             }
         }
 
@@ -292,6 +295,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        group_id: groupId,
+                        line_user_id: lineUserId,
                         message,
                         history: historyForRequest,
                         context: {

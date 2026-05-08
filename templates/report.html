@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Care Report</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='report.css') }}">
+</head>
+<body>
+    <main class="report-shell">
+        <header class="report-header">
+            <div>
+                <p class="eyebrow">Care Analytics</p>
+                <h1>รายงานภาพรวมผู้ป่วย</h1>
+                <p id="group-label" class="muted"></p>
+            </div>
+            <div class="header-actions">
+                <button id="refresh-button" type="button">รีเฟรช</button>
+            </div>
+        </header>
+
+        <section id="summary-grid" class="summary-grid"></section>
+
+        <section class="report-grid">
+            <article class="panel wide">
+                <div class="panel-heading">
+                    <p class="eyebrow">Patients</p>
+                    <h2>Patient overview</h2>
+                </div>
+                <div id="patient-list" class="patient-list"></div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <p class="eyebrow">Care load</p>
+                    <h2>สัดส่วนข้อมูลในระบบ</h2>
+                </div>
+                <div id="care-load-chart" class="bar-chart"></div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <p class="eyebrow">Engagement</p>
+                    <h2>Alert response</h2>
+                </div>
+                <div id="engagement-chart" class="progress-list"></div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <p class="eyebrow">CareBot</p>
+                    <h2>Assessment trend</h2>
+                </div>
+                <div id="assessment-chart" class="score-chart"></div>
+            </article>
+
+            <article class="panel wide">
+                <div class="panel-heading">
+                    <p class="eyebrow">CareBot assessments</p>
+                    <h2>แบบประเมินล่าสุด</h2>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>LINE user</th>
+                                <th>Type</th>
+                                <th>Score</th>
+                                <th>Created</th>
+                            </tr>
+                        </thead>
+                        <tbody id="carebot-assessment-list"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel wide">
+                <div class="panel-heading">
+                    <p class="eyebrow">CareBot chat</p>
+                    <h2>บทสนทนาล่าสุด</h2>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>User</th>
+                                <th>Role</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody id="carebot-chat-list"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <p class="eyebrow">Symptom check</p>
+                    <h2>Risk mix</h2>
+                </div>
+                <div id="symptom-risk-chart" class="progress-list"></div>
+            </article>
+
+            <article class="panel wide">
+                <div class="panel-heading">
+                    <p class="eyebrow">Symptom check-in</p>
+                    <h2>ประวัติเช็กอาการล่าสุด</h2>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>ผู้ใช้</th>
+                                <th>Risk</th>
+                                <th>อาการ</th>
+                                <th>Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody id="symptom-check-list"></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <p class="eyebrow">Medication</p>
+                    <h2>รายการยา</h2>
+                </div>
+                <div id="medicine-list" class="compact-list"></div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-heading">
+                    <p class="eyebrow">Appointments</p>
+                    <h2>นัดหมาย</h2>
+                </div>
+                <div id="appointment-list" class="compact-list"></div>
+            </article>
+
+            <article class="panel wide">
+                <div class="panel-heading">
+                    <p class="eyebrow">Activity</p>
+                    <h2>Timeline ล่าสุด</h2>
+                </div>
+                <div id="timeline" class="timeline"></div>
+            </article>
+        </section>
+    </main>
+
+    <script>
+        const groupId = {{ group_id | tojson }};
+        const summaryGrid = document.getElementById('summary-grid');
+        const patientList = document.getElementById('patient-list');
+        const careLoadChart = document.getElementById('care-load-chart');
+        const engagementChart = document.getElementById('engagement-chart');
+        const assessmentChart = document.getElementById('assessment-chart');
+        const carebotAssessmentList = document.getElementById('carebot-assessment-list');
+        const carebotChatList = document.getElementById('carebot-chat-list');
+        const symptomRiskChart = document.getElementById('symptom-risk-chart');
+        const symptomCheckList = document.getElementById('symptom-check-list');
+        const medicineList = document.getElementById('medicine-list');
+        const appointmentList = document.getElementById('appointment-list');
+        const timeline = document.getElementById('timeline');
+        document.getElementById('group-label').textContent = `Group ID: ${groupId}`;
+
+        function pct(value, total) {
+            if (!total) return 0;
+            return Math.round((value / total) * 100);
+        }
+
+        function empty(label) {
+            return `<p class="empty">${label}</p>`;
+        }
+
+        function emptyRow(label, columns) {
+            return `<tr><td colspan="${columns}" class="empty-cell" data-label="">${label}</td></tr>`;
+        }
+
+        function formatTime(value) {
+            if (!value) return '-';
+            return new Date(value).toLocaleString('th-TH', {
+                day: 'numeric',
+                month: 'short',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+            });
+        }
+
+        function shortId(value) {
+            if (!value) return '-';
+            const text = String(value);
+            return text.length > 16 ? `${text.slice(0, 8)}...${text.slice(-4)}` : text;
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+                '&': '&amp;',
+                '<': '&lt;',
+                '>': '&gt;',
+                '"': '&quot;',
+                "'": '&#39;',
+            }[char]));
+        }
+
+        function renderSummary(summary) {
+            const cards = [
+                ['Patients', summary.patients, '#0f8f8c'],
+                ['Caregivers', summary.caregivers, '#3267b7'],
+                ['Medicines', summary.medicines, '#55b82e'],
+                ['Appointments', summary.appointments, '#c75b39'],
+                ['Medicine taken', `${summary.medicine_adherence_pct}%`, '#55b82e'],
+                ['Appointment ack', `${summary.appointment_ack_pct}%`, '#3267b7'],
+                ['OCR scans', summary.ocr_scans, '#0f8f8c'],
+                ['CareBot forms', summary.carebot_assessments, '#c75b39'],
+                ['CareBot chats', summary.carebot_chats, '#3267b7'],
+                ['Symptom chats', summary.symptom_sessions, '#8a5cf6'],
+                ['Symptom alerts', summary.symptom_alerts, '#c75b39'],
+            ];
+            summaryGrid.innerHTML = cards.map(([label, value, color]) => `
+                <article class="summary-card" style="--accent:${color}">
+                    <span>${label}</span>
+                    <strong>${value}</strong>
+                </article>
+            `).join('');
+        }
+
+        function renderSymptomRisk(items) {
+            if (!items.length) {
+                symptomRiskChart.innerHTML = empty('ยังไม่มีข้อมูลเช็กอาการ');
+                return;
+            }
+            symptomRiskChart.innerHTML = items.map((item) => {
+                const value = pct(item.value, item.total);
+                return `
+                    <div class="progress-row">
+                        <div><strong>${item.label}</strong><span>${item.value}</span></div>
+                        <div class="progress-track"><i style="width:${value}%;background:${item.color}"></i></div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderSymptomChecks(report) {
+            const alerts = (report.alerts || []).map((item) => ({
+                time: item.created_at,
+                user: item.display_user || item.user_id,
+                risk: item.risk_level,
+                riskLabel: item.risk_label || item.risk_level,
+                group: item.group_name || item.group_id,
+                detail: item.display_detail || item.message,
+            }));
+            const observations = (report.observations || []).map((item) => {
+                const observation = item.observation || {};
+                return {
+                    time: item.created_at,
+                    user: item.display_user || item.user_id,
+                    risk: item.risk_level,
+                    riskLabel: item.risk_label || item.risk_level,
+                    group: item.group_name || item.group_id,
+                    detail: item.display_detail || observation.answer || observation.main_symptom_text || observation.type || '-',
+                };
+            });
+            const items = alerts.concat(observations)
+                .sort((a, b) => String(b.time || '').localeCompare(String(a.time || '')))
+                .slice(0, 12);
+            if (!items.length) {
+                symptomCheckList.innerHTML = emptyRow('ยังไม่มีประวัติเช็กอาการ', 5);
+                return;
+            }
+            symptomCheckList.innerHTML = items.map((item) => `
+                <tr>
+                    <td data-label="Time">${formatTime(item.time)}</td>
+                    <td data-label="User" class="clip-cell" title="${escapeHtml(item.user || '')}">${escapeHtml(shortId(item.user))}</td>
+                    <td data-label="Risk"><span class="pill ${escapeHtml(item.risk || '')}">${escapeHtml(item.riskLabel || item.risk || '-')}</span></td>
+                    <td data-label="อาการ">${escapeHtml(item.group || '-')}</td>
+                    <td data-label="Detail" class="detail-cell">${escapeHtml(item.detail || '-')}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderPatients(patients) {
+            if (!patients.length) {
+                patientList.innerHTML = empty('ยังไม่มี Patient');
+                return;
+            }
+            patientList.innerHTML = patients.map((patient) => `
+                <article class="patient-card">
+                    <div class="avatar">${escapeHtml((patient.name || '?').slice(0, 1))}</div>
+                    <div>
+                        <h3>${escapeHtml(patient.name)}</h3>
+                        <p>${escapeHtml(patient.gender)} · ${escapeHtml(patient.height_cm || '-')} cm · ${escapeHtml(patient.weight_kg || '-')} kg</p>
+                    </div>
+                    <div class="patient-stat">
+                        <span>BMI</span>
+                        <strong>${patient.bmi || '-'}</strong>
+                        <small>${patient.bmi_label}</small>
+                    </div>
+                    <div class="patient-stat">
+                        <span>Care items</span>
+                        <strong>${patient.medicine_count + patient.appointment_count}</strong>
+                        <small>ยา + นัด</small>
+                    </div>
+                </article>
+            `).join('');
+        }
+
+        function renderBars(items) {
+            const max = Math.max(...items.map((item) => item.value), 1);
+            careLoadChart.innerHTML = items.map((item) => `
+                <div class="bar-row">
+                    <span>${item.label}</span>
+                    <div class="bar-track"><i style="width:${pct(item.value, max)}%;background:${item.color}"></i></div>
+                    <strong>${item.value}</strong>
+                </div>
+            `).join('');
+        }
+
+        function renderProgress(items) {
+            engagementChart.innerHTML = items.map((item) => {
+                const value = pct(item.value, item.total);
+                return `
+                    <div class="progress-row">
+                        <div><strong>${item.label}</strong><span>${item.value}/${item.total}</span></div>
+                        <div class="progress-track"><i style="width:${value}%;background:${item.color}"></i></div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function renderAssessments(items) {
+            if (!items.length) {
+                assessmentChart.innerHTML = empty('ยังไม่มี CareBot assessment');
+                return;
+            }
+            assessmentChart.innerHTML = items.map((item) => `
+                <div class="score-column">
+                    <div class="score-fill" style="height:${Math.max(8, pct(item.value, item.total))}%;background:${item.color}"></div>
+                    <strong>${item.value}</strong>
+                    <span>${item.label}</span>
+                </div>
+            `).join('');
+        }
+
+        function renderAssessmentRows(items) {
+            if (!items.length) {
+                carebotAssessmentList.innerHTML = emptyRow('ยังไม่มี CareBot assessment', 5);
+                return;
+            }
+            carebotAssessmentList.innerHTML = items.map((item) => `
+                <tr>
+                    <td data-label="ID">${item.id || '-'}</td>
+                    <td data-label="LINE user" class="clip-cell" title="${escapeHtml(item.line_user_id || '')}">${escapeHtml(item.display_user || shortId(item.line_user_id))}</td>
+                    <td data-label="Type"><span class="pill">${escapeHtml(item.assessment_type || '-')}</span></td>
+                    <td data-label="Score"><strong>${item.score ?? '-'}</strong></td>
+                    <td data-label="Created">${formatTime(item.created_at)}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderCareBotChats(items) {
+            if (!items.length) {
+                carebotChatList.innerHTML = emptyRow('ยังไม่มีบทสนทนา CareBot', 4);
+                return;
+            }
+            carebotChatList.innerHTML = items.map((item) => `
+                <tr>
+                    <td data-label="Time">${formatTime(item.created_at)}</td>
+                    <td data-label="User" class="clip-cell" title="${escapeHtml(item.line_user_id || '')}">${escapeHtml(item.display_user || shortId(item.line_user_id))}</td>
+                    <td data-label="Role"><span class="pill">${escapeHtml(item.role || '-')}</span></td>
+                    <td data-label="Message" class="detail-cell">${escapeHtml(item.message || '-')}</td>
+                </tr>
+            `).join('');
+        }
+
+        function renderList(node, items, type) {
+            if (!items.length) {
+                node.innerHTML = empty(type === 'medicine' ? 'ยังไม่มียา' : 'ยังไม่มีนัดหมาย');
+                return;
+            }
+            node.innerHTML = items.map((item) => {
+                if (type === 'medicine') {
+                    return `<article><strong>${escapeHtml(item.medicine_name)}</strong><span>${escapeHtml([item.dosage, item.take_time].filter(Boolean).join(' · ') || '-')}</span></article>`;
+                }
+                return `<article><strong>${escapeHtml(item.hospital || 'ใบนัดหมอ')}</strong><span>${escapeHtml([item.appointment_date, item.appointment_time, item.department].filter(Boolean).join(' · ') || '-')}</span></article>`;
+            }).join('');
+        }
+
+        function renderTimeline(items) {
+            if (!items.length) {
+                timeline.innerHTML = empty('ยังไม่มีกิจกรรม');
+                return;
+            }
+            timeline.innerHTML = items.map((item) => `
+                <article>
+                    <time>${formatTime(item.time)}</time>
+                    <strong>${escapeHtml(item.label)}</strong>
+                    <span>${escapeHtml(item.detail)}</span>
+                </article>
+            `).join('');
+        }
+
+        async function loadReport() {
+            const response = await fetch(`/api/report?group_id=${encodeURIComponent(groupId)}`, { cache: 'no-store' });
+            const data = await response.json();
+            renderSummary(data.summary);
+            renderPatients(data.patients || []);
+            renderBars(data.charts.care_load || []);
+            renderProgress(data.charts.engagement || []);
+            renderAssessments(data.charts.assessments || []);
+            renderAssessmentRows(data.assessments || []);
+            renderCareBotChats(data.carebot_chats || []);
+            renderSymptomRisk(data.charts.symptom_risk || []);
+            renderSymptomChecks(data.symptom_report || {});
+            renderList(medicineList, data.medicines || [], 'medicine');
+            renderList(appointmentList, data.appointments || [], 'appointment');
+            renderTimeline(data.timeline || []);
+        }
+
+        document.getElementById('refresh-button').addEventListener('click', loadReport);
+        loadReport();
+    </script>
+</body>
+</html>

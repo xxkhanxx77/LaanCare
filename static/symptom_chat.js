@@ -127,7 +127,11 @@
         const response = await fetch("/api/symptom-chat/reset", {
             method: "POST",
             headers: {"Content-Type": "application/json"},
-            body: JSON.stringify({user_id: userId, line_user_id: context.lineUserId || ""}),
+            body: JSON.stringify({
+                user_id: userId,
+                line_user_id: context.lineUserId || "",
+                group_id: context.groupId || "",
+            }),
         });
         const result = await response.json();
         messagesEl.replaceChildren();

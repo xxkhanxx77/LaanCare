@@ -32,6 +32,7 @@ try:
         list_appointment_alert_action_logs,
         list_appointments,
         list_carebot_assessments,
+        list_carebot_chat_logs,
         list_medicine_alert_action_logs,
         list_medicines,
         list_ocr_results,
@@ -40,6 +41,7 @@ try:
         record_medicine_alert_action,
         save_appointment_item,
         save_carebot_assessment,
+        save_carebot_chat_log,
         save_medicine_item,
         save_medicine_items,
         save_ocr_result,
@@ -80,6 +82,7 @@ except ImportError:
         list_appointment_alert_action_logs,
         list_appointments,
         list_carebot_assessments,
+        list_carebot_chat_logs,
         list_medicine_alert_action_logs,
         list_medicines,
         list_ocr_results,
@@ -88,6 +91,7 @@ except ImportError:
         record_medicine_alert_action,
         save_appointment_item,
         save_carebot_assessment,
+        save_carebot_chat_log,
         save_medicine_item,
         save_medicine_items,
         save_ocr_result,
@@ -98,6 +102,7 @@ except ImportError:
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 from urllib.parse import urlencode
@@ -305,6 +310,32 @@ def carebot():
     )
 
 
+@app.get("/report")
+def report_dashboard():
+    group_id = request.args.get("group_id", "").strip()
+    if not group_id:
+        abort(400, "Missing group_id")
+
+    return render_template("report.html", group_id=group_id)
+
+
+@app.get("/api/report")
+def report_api():
+    group_id = request.args.get("group_id", "").strip() or None
+    return jsonify(build_report_payload(group_id))
+
+
+@app.post("/api/report/mock-data")
+def report_mock_data_api():
+    payload = request.get_json(silent=True) or {}
+    group_id = normalize_registration_input(payload.get("group_id") or request.args.get("group_id"))
+    if not group_id:
+        return jsonify({"success": False, "error": "Missing group_id"}), 400
+
+    summary = seed_report_mock_data(group_id)
+    return jsonify({"success": True, "summary": summary, "report": build_report_payload(group_id)})
+
+
 @app.route("/api/carebot/assessments", methods=["GET", "POST"])
 def carebot_assessments_api():
     if request.method == "POST":
@@ -325,10 +356,16 @@ def carebot_assessments_api():
         except (TypeError, ValueError):
             return jsonify({"success": False, "error": "score must be a number"}), 400
 
+        group_id = normalize_registration_input(payload.get("group_id")) or None
+        line_user_id = normalize_registration_input(payload.get("line_user_id")) or None
+        if not group_id and line_user_id:
+            registration = get_registration_by_line_user_id(line_user_id)
+            group_id = registration.get("group_id") if registration else None
+
         assessment_id = save_carebot_assessment(
             {
-                "group_id": normalize_registration_input(payload.get("group_id")) or None,
-                "line_user_id": normalize_registration_input(payload.get("line_user_id")) or None,
+                "group_id": group_id,
+                "line_user_id": line_user_id,
                 "assessment_type": assessment_type,
                 "score": score,
                 "responses": responses,
@@ -349,13 +386,38 @@ def carebot_chat_api():
     message = normalize_registration_input(payload.get("message"))
     history = payload.get("history") if isinstance(payload.get("history"), list) else []
     context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    group_id = normalize_registration_input(payload.get("group_id")) or None
+    line_user_id = normalize_registration_input(payload.get("line_user_id")) or None
+    if not group_id and line_user_id:
+        registration = get_registration_by_line_user_id(line_user_id)
+        group_id = registration.get("group_id") if registration else None
     if not message:
         return jsonify({"success": False, "error": "message is required"}), 400
+
+    save_carebot_chat_log(
+        {
+            "group_id": group_id,
+            "line_user_id": line_user_id,
+            "role": "user",
+            "message": message,
+            "context": context,
+        }
+    )
 
     try:
         response_text = generate_carebot_reply(message, history, context)
     except CareBotError as error:
         return jsonify({"success": False, "error": str(error)}), 502
+
+    save_carebot_chat_log(
+        {
+            "group_id": group_id,
+            "line_user_id": line_user_id,
+            "role": "assistant",
+            "message": response_text,
+            "context": context,
+        }
+    )
 
     return jsonify({"success": True, "response": response_text})
 
@@ -745,6 +807,533 @@ def ocr_results_api():
     return jsonify({"ocr_results": list_ocr_results(group_id)})
 
 
+def build_report_payload(group_id=None):
+    registrations = list_registrations(group_id)
+    medicines = list_medicines(group_id)
+    appointments = list_appointments(group_id)
+    medicine_alert_logs = recent_medicine_alert_logs(group_id=group_id, limit=200)
+    medicine_action_logs = list_medicine_alert_action_logs(group_id=group_id, limit=200)
+    appointment_alert_logs = recent_appointment_alert_logs(group_id=group_id, limit=200)
+    appointment_action_logs = list_appointment_alert_action_logs(group_id=group_id, limit=200)
+    ocr_results = list_ocr_results(group_id)
+
+    patients = [member for member in registrations if member.get("role") == "patient"]
+    caregivers = [member for member in registrations if member.get("role") == "caregiver"]
+    line_user_ids = [member.get("line_user_id") for member in registrations if member.get("line_user_id")]
+    member_names = {
+        member.get("line_user_id"): full_name(member)
+        for member in registrations
+        if member.get("line_user_id")
+    }
+    symptom_report = build_symptom_report(group_id, line_user_ids)
+    decorate_symptom_report(symptom_report, member_names)
+    symptom_summary = symptom_report.get("summary", {})
+    report_line_user_ids = list(dict.fromkeys(line_user_ids + (symptom_report.get("user_ids") or [])))
+    assessments = list_carebot_assessments(group_id, report_line_user_ids)
+    carebot_chat_logs = list_carebot_chat_logs(group_id, report_line_user_ids, limit=50)
+    medicine_sent = len([item for item in medicine_alert_logs if item.get("status") == "sent"])
+    appointment_sent = len([item for item in appointment_alert_logs if item.get("status") == "sent"])
+    medicine_taken = len([item for item in medicine_action_logs if item.get("action") == "taken"])
+    appointment_ack = len([item for item in appointment_action_logs if item.get("action") == "acknowledged"])
+    latest_assessments = sorted(assessments, key=lambda item: item.get("created_at") or "", reverse=True)
+
+    patient_cards = []
+    for patient in patients:
+        bmi = calculate_bmi(patient.get("height_cm"), patient.get("weight_kg"))
+        patient_cards.append(
+            {
+                "id": patient.get("id"),
+                "name": full_name(patient),
+                "gender": patient.get("gender") or "-",
+                "height_cm": patient.get("height_cm"),
+                "weight_kg": patient.get("weight_kg"),
+                "bmi": bmi,
+                "bmi_label": bmi_label(bmi),
+                "medicine_count": len(medicines),
+                "appointment_count": len(appointments),
+                "latest_assessment": latest_assessments[0] if latest_assessments else None,
+            }
+        )
+
+    return {
+        "group_id": group_id,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": {
+            "patients": len(patients),
+            "caregivers": len(caregivers),
+            "medicines": len(medicines),
+            "appointments": len(appointments),
+            "medicine_alerts_sent": medicine_sent,
+            "medicine_taken": medicine_taken,
+            "medicine_adherence_pct": percent(medicine_taken, max(medicine_sent, medicine_taken)),
+            "appointment_alerts_sent": appointment_sent,
+            "appointment_acknowledged": appointment_ack,
+            "appointment_ack_pct": percent(appointment_ack, max(appointment_sent, appointment_ack)),
+            "ocr_scans": len(ocr_results),
+            "carebot_assessments": len(assessments),
+            "carebot_chats": len(carebot_chat_logs),
+            "symptom_sessions": symptom_summary.get("sessions", 0),
+            "symptom_messages": symptom_summary.get("messages", 0),
+            "symptom_alerts": symptom_summary.get("alerts", 0),
+            "symptom_observations": symptom_summary.get("observations", 0),
+        },
+        "patients": patient_cards,
+        "caregivers": [{"id": item.get("id"), "name": full_name(item), "phone": item.get("phone")} for item in caregivers],
+        "medicines": medicines[:12],
+        "appointments": appointments[:12],
+        "assessments": [
+            {
+                "id": item.get("id"),
+                "line_user_id": item.get("line_user_id"),
+                "display_user": member_names.get(item.get("line_user_id")) or "",
+                "assessment_type": item.get("assessment_type"),
+                "score": item.get("score"),
+                "created_at": item.get("created_at"),
+            }
+            for item in assessments[:12]
+        ],
+        "carebot_chats": [
+            {
+                "id": item.get("id"),
+                "line_user_id": item.get("line_user_id"),
+                "display_user": member_names.get(item.get("line_user_id")) or "",
+                "role": item.get("role"),
+                "message": item.get("message"),
+                "created_at": item.get("created_at"),
+            }
+            for item in carebot_chat_logs[:12]
+        ],
+        "symptom_report": symptom_report,
+        "charts": {
+            "care_load": [
+                {"label": "Patients", "value": len(patients), "color": "#0f8f8c"},
+                {"label": "Caregivers", "value": len(caregivers), "color": "#3267b7"},
+                {"label": "Medicines", "value": len(medicines), "color": "#55b82e"},
+                {"label": "Appointments", "value": len(appointments), "color": "#c75b39"},
+                {"label": "Symptom checks", "value": symptom_summary.get("sessions", 0), "color": "#8a5cf6"},
+            ],
+            "engagement": [
+                {"label": "กินยาแล้ว", "value": medicine_taken, "total": max(medicine_sent, 1), "color": "#55b82e"},
+                {"label": "รับทราบนัด", "value": appointment_ack, "total": max(appointment_sent, 1), "color": "#3267b7"},
+                {"label": "OCR scans", "value": len(ocr_results), "total": max(len(ocr_results), 5), "color": "#0f8f8c"},
+                {"label": "CareBot chats", "value": len(carebot_chat_logs), "total": max(len(carebot_chat_logs), 1), "color": "#c75b39"},
+                {"label": "Symptom alerts", "value": symptom_summary.get("alerts", 0), "total": max(symptom_summary.get("observations", 0), 1), "color": "#8a5cf6"},
+            ],
+            "assessments": build_assessment_chart(assessments),
+            "symptom_risk": build_symptom_risk_chart(symptom_report),
+        },
+        "timeline": build_report_timeline(
+            medicine_alert_logs,
+            medicine_action_logs,
+            appointment_alert_logs,
+            appointment_action_logs,
+            ocr_results,
+            assessments,
+            build_carebot_chat_timeline_items(carebot_chat_logs),
+            build_symptom_timeline_items(symptom_report),
+        ),
+    }
+
+
+def seed_report_mock_data(group_id):
+    existing_members = list_registrations(group_id)
+    existing_names = {full_name(member) for member in existing_members}
+    created = {"registrations": 0, "medicines": 0, "appointments": 0, "assessments": 0, "actions": 0}
+
+    mock_members = [
+        {
+            "group_id": group_id,
+            "line_user_id": f"mock-patient-{group_id[-6:]}",
+            "first_name": "สมชาย",
+            "last_name": "ใจดี",
+            "email": "patient.demo@example.com",
+            "phone": "0995550101",
+            "gender": "male",
+            "role": "patient",
+            "height_cm": 168,
+            "weight_kg": 68,
+        },
+        {
+            "group_id": group_id,
+            "line_user_id": f"mock-caregiver-{group_id[-6:]}",
+            "first_name": "มินตรา",
+            "last_name": "ผู้ดูแล",
+            "email": "caregiver.demo@example.com",
+            "phone": "0995550102",
+            "gender": "female",
+            "role": "caregiver",
+            "height_cm": None,
+            "weight_kg": None,
+        },
+    ]
+    for member in mock_members:
+        if f"{member['first_name']} {member['last_name']}" not in existing_names:
+            save_registration(member)
+            created["registrations"] += 1
+
+    existing_medicine_names = {medicine.get("medicine_name") for medicine in list_medicines(group_id)}
+    for item in [
+        {"medicine_name": "metformin", "dosage": "1 เม็ด", "take_time": "เช้า, เย็น / หลังอาหาร", "instruction": "ควบคุมระดับน้ำตาล"},
+        {"medicine_name": "amlodipine", "dosage": "1 เม็ด", "take_time": "เช้า / หลังอาหาร", "instruction": "ควบคุมความดัน"},
+        {"medicine_name": "atorvastatin", "dosage": "1 เม็ด", "take_time": "ก่อนนอน", "instruction": "ควบคุมไขมัน"},
+    ]:
+        if item["medicine_name"] not in existing_medicine_names:
+            save_medicine_item(group_id, item)
+            created["medicines"] += 1
+
+    existing_appointments = {f"{item.get('hospital')}|{item.get('appointment_date')}" for item in list_appointments(group_id)}
+    appointment_key = "โรงพยาบาลเซนต์หลุยส์|พฤหัสบดี, 19 ก.พ. 2569"
+    if appointment_key not in existing_appointments:
+        save_appointment_item(
+            group_id,
+            {
+                "hospital": "โรงพยาบาลเซนต์หลุยส์",
+                "department": "Internal Medicine Center",
+                "doctor": "นพ.ศักรินทร์ กังสุภล",
+                "appointment_date": "พฤหัสบดี, 19 ก.พ. 2569",
+                "appointment_time": "17:00 - 20:00",
+                "appointment_datetime": "2026-02-19T17:00:00+07:00",
+                "preparation": "กรุณามาก่อนนัด 15 นาที พร้อมใบนัด",
+                "reason": "ติดตามผลการรักษา",
+                "interpretation": "นัดติดตามอาการต่อเนื่อง",
+                "image_path": "/static/uploads/medicines/6655a1f9a0ff4727bf210096504a0990.jpg",
+            },
+        )
+        created["appointments"] += 1
+
+    for score in [3, 5, 2]:
+        save_carebot_assessment(
+            {
+                "group_id": group_id,
+                "line_user_id": f"mock-patient-{group_id[-6:]}",
+                "assessment_type": "PHQ-9",
+                "score": score,
+                "responses": {"demo": True, "mood": score},
+            }
+        )
+        created["assessments"] += 1
+
+    for action in ["taken", "taken", "taken", "taken", "taken"]:
+        record_medicine_alert_action(
+            {
+                "group_id": group_id,
+                "medicine_id": None,
+                "action": action,
+                "line_user_id": f"mock-caregiver-{group_id[-6:]}",
+                "source_type": "mock",
+                "source_id": group_id,
+                "raw_payload": {"mock": True},
+            }
+        )
+        created["actions"] += 1
+    for action in ["acknowledged", "acknowledged"]:
+        record_appointment_alert_action(
+            {
+                "group_id": group_id,
+                "appointment_id": None,
+                "action": action,
+                "line_user_id": f"mock-caregiver-{group_id[-6:]}",
+                "source_type": "mock",
+                "source_id": group_id,
+                "raw_payload": {"mock": True},
+            }
+        )
+        created["actions"] += 1
+
+    return created
+
+
+def build_symptom_report(group_id=None, line_user_ids=None):
+    try:
+        return get_symptom_engine().db.report_snapshot(
+            user_ids=line_user_ids or [],
+            group_id=group_id,
+            limit=12,
+        )
+    except Exception as error:
+        app.logger.warning("Failed to build symptom report: %s", error)
+        return {
+            "summary": {
+                "users": 0,
+                "sessions": 0,
+                "active_sessions": 0,
+                "messages": 0,
+                "observations": 0,
+                "alerts": 0,
+                "red_alerts": 0,
+                "yellow_alerts": 0,
+            },
+            "risk_counts": [],
+            "user_ids": [],
+            "sessions": [],
+            "observations": [],
+            "alerts": [],
+            "messages": [],
+        }
+
+
+def build_symptom_risk_chart(symptom_report):
+    colors = {
+        "red": "#c75b39",
+        "yellow": "#d69b18",
+        "green": "#55b82e",
+        "insufficient": "#7d8b83",
+        "observation": "#3267b7",
+        "unknown": "#7d8b83",
+    }
+    labels = {
+        "red": "เสี่ยงแดง",
+        "yellow": "เสี่ยงเหลือง",
+        "green": "ปกติ",
+        "insufficient": "ข้อมูลยังไม่พอ",
+        "observation": "ข้อมูลอาการ",
+        "unknown": "ไม่ระบุ",
+    }
+    rows = symptom_report.get("risk_counts") or []
+    total = max(sum(int(row.get("count") or 0) for row in rows), 1)
+    return [
+        {
+            "label": labels.get(row.get("risk_level"), row.get("risk_level") or "Unknown"),
+            "value": int(row.get("count") or 0),
+            "total": total,
+            "color": colors.get(row.get("risk_level"), "#7d8b83"),
+        }
+        for row in rows
+    ]
+
+
+def decorate_symptom_report(symptom_report, member_names=None):
+    member_names = member_names or {}
+    for alert in symptom_report.get("alerts") or []:
+        user_id = alert.get("user_id")
+        alert["display_user"] = member_names.get(user_id) or ""
+        alert["risk_label"] = symptom_risk_label(alert.get("risk_level"))
+        alert["group_name"] = symptom_group_name(alert.get("group_id"), alert.get("message"))
+        alert["display_detail"] = human_symptom_alert_detail(alert)
+
+    for observation in symptom_report.get("observations") or []:
+        user_id = observation.get("user_id")
+        observation["display_user"] = member_names.get(user_id) or ""
+        observation["risk_label"] = symptom_risk_label(observation.get("risk_level"))
+        observation["group_name"] = symptom_group_name(observation.get("group_id"))
+        observation["display_detail"] = human_symptom_observation_detail(observation)
+
+    for message in symptom_report.get("messages") or []:
+        user_id = message.get("user_id")
+        message["display_user"] = member_names.get(user_id) or ""
+
+    return symptom_report
+
+
+def human_symptom_alert_detail(alert):
+    message = alert.get("message") or ""
+    risk = symptom_risk_label(alert.get("risk_level"))
+    group_name = alert.get("group_name") or symptom_group_name(alert.get("group_id"), message)
+    answer = human_symptom_answer(extract_alert_field(message, "คำตอบล่าสุด"))
+    delivered = bool(alert.get("delivered"))
+    blocked_reason = alert.get("blocked_reason")
+
+    parts = []
+    if risk != "-":
+        parts.append(f"พบสัญญาณ{risk}")
+    if group_name:
+        parts.append(f"อาการ: {group_name}")
+    if answer and answer != "-":
+        parts.append(f"คำตอบล่าสุด: {answer}")
+    if delivered:
+        parts.append("แจ้งผู้ดูแลแล้ว")
+    elif blocked_reason:
+        parts.append("ยังไม่ได้ส่งถึงผู้ดูแล")
+    return " · ".join(parts) or group_name or "-"
+
+
+def human_symptom_observation_detail(observation):
+    data = observation.get("observation") or {}
+    group_name = observation.get("group_name") or symptom_group_name(observation.get("group_id"))
+    answer = human_symptom_answer(data.get("answer"))
+    obs_type = data.get("type") or ""
+    main_symptom = data.get("main_symptom_text") or ""
+
+    if obs_type == "daily_checkin" and data.get("answer") == "no_abnormal_symptom":
+        return "เช็กอินประจำวัน: ไม่พบอาการผิดปกติ"
+    if main_symptom:
+        return f"แจ้งอาการ: {main_symptom}"
+    if obs_type == "red_bundle":
+        detail = "คัดกรองอาการแดง"
+        if answer and answer != "-":
+            detail += f": ตอบว่า{answer}"
+        if group_name:
+            detail += f" · อาการ: {group_name}"
+        return detail
+    if answer and answer != "-":
+        return f"คำตอบ: {answer}" + (f" · อาการ: {group_name}" if group_name else "")
+    return group_name or "บันทึกข้อมูลอาการ"
+
+
+def symptom_risk_label(risk):
+    return {
+        "red": "เสี่ยงแดง",
+        "yellow": "เสี่ยงเหลือง",
+        "green": "ปกติ",
+        "insufficient": "ข้อมูลยังไม่พอ",
+        "observation": "ข้อมูลอาการ",
+    }.get(risk or "", risk or "-")
+
+
+def human_symptom_answer(answer):
+    normalized = str(answer or "").strip()
+    return {
+        "yes": "ใช่",
+        "no": "ไม่ใช่",
+        "unknown": "ไม่แน่ใจ",
+        "no_abnormal_symptom": "ไม่พบอาการผิดปกติ",
+    }.get(normalized.lower(), normalized)
+
+
+def extract_alert_field(message, field_name):
+    prefix = f"{field_name}:"
+    for line in str(message or "").splitlines():
+        line = line.strip()
+        if line.startswith(prefix):
+            return line[len(prefix):].strip()
+    return ""
+
+
+def symptom_group_name(group_id, alert_message=None):
+    group_id = str(group_id or "").strip()
+    if group_id:
+        try:
+            group = get_symptom_engine().corpus.get_group(group_id)
+            if group and group.get("group_name_th"):
+                return group["group_name_th"]
+        except Exception:
+            pass
+
+    group_line = extract_alert_field(alert_message, "กลุ่ม")
+    if group_line:
+        return group_line.replace(group_id, "", 1).strip() if group_id else group_line
+    return ""
+
+
+def build_symptom_timeline_items(symptom_report):
+    events = []
+    for alert in symptom_report.get("alerts") or []:
+        events.append(
+            {
+                "created_at": alert.get("created_at"),
+                "feature": "symptom_alert",
+                "status": alert.get("risk_label") or "แจ้งเตือนอาการ",
+                "detail": alert.get("display_detail") or alert.get("group_name") or "-",
+            }
+        )
+    for observation in symptom_report.get("observations") or []:
+        events.append(
+            {
+                "created_at": observation.get("created_at"),
+                "feature": "symptom_observation",
+                "status": observation.get("risk_label") or "ข้อมูลอาการ",
+                "detail": observation.get("display_detail") or observation.get("group_name") or "-",
+            }
+        )
+    for message in symptom_report.get("messages") or []:
+        if message.get("role") != "user":
+            continue
+        events.append(
+            {
+                "created_at": message.get("created_at"),
+                "feature": "symptom_chat",
+                "status": "symptom chat",
+                "detail": message.get("message") or "-",
+            }
+        )
+    return events[:12]
+
+
+def build_carebot_chat_timeline_items(carebot_chat_logs):
+    events = []
+    for item in carebot_chat_logs or []:
+        events.append(
+            {
+                "created_at": item.get("created_at"),
+                "feature": "carebot_chat",
+                "status": "CareBot chat",
+                "detail": item.get("message") or "-",
+            }
+        )
+    return events[:12]
+
+
+def build_assessment_chart(assessments):
+    recent = sorted(assessments, key=lambda item: item.get("created_at") or "")[-8:]
+    return [
+        {
+            "label": item.get("assessment_type") or "PHQ",
+            "value": item.get("score") or 0,
+            "total": 27 if item.get("assessment_type") == "PHQ-9" else 6,
+            "color": "#c75b39" if (item.get("score") or 0) >= 10 else "#3267b7",
+        }
+        for item in recent
+    ]
+
+
+def build_report_timeline(*groups):
+    events = []
+    for group in groups:
+        for item in group:
+            created_at = item.get("created_at") or item.get("sent_at") or ""
+            label = item.get("action") or item.get("detected_type") or item.get("status") or item.get("assessment_type") or "event"
+            events.append({"time": created_at, "label": label, "detail": timeline_detail(item)})
+
+    return sorted(events, key=lambda item: item["time"], reverse=True)[:16]
+
+
+def timeline_detail(item):
+    if item.get("detail"):
+        return str(item.get("detail"))[:140]
+    if item.get("medicine_id"):
+        return f"Medicine #{item.get('medicine_id')}"
+    if item.get("appointment_id"):
+        return f"Appointment #{item.get('appointment_id')}"
+    if item.get("score") is not None:
+        return f"Score {item.get('score')}"
+    if item.get("detected_type"):
+        return f"OCR {item.get('detected_type')}"
+    return item.get("group_id") or "-"
+
+
+def calculate_bmi(height_cm, weight_kg):
+    try:
+        height_m = float(height_cm) / 100
+        weight = float(weight_kg)
+        if height_m <= 0:
+            return None
+        return round(weight / (height_m * height_m), 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def bmi_label(bmi):
+    if bmi is None:
+        return "-"
+    if bmi < 18.5:
+        return "น้ำหนักน้อย"
+    if bmi < 23:
+        return "สมส่วน"
+    if bmi < 25:
+        return "เริ่มเกิน"
+    return "ควรติดตาม"
+
+
+def percent(value, total):
+    if not total:
+        return 0
+    return round((value / total) * 100)
+
+
+def full_name(member):
+    return " ".join(part for part in (member.get("first_name"), member.get("last_name")) if part).strip() or "-"
+
+
 @app.get("/api/appointments")
 def appointments_api():
     group_id = request.args.get("group_id", "").strip() or None
@@ -1097,6 +1686,16 @@ def build_symptom_chat_url(group_id=None, line_user_id=None):
     return f"{base_url}/symptom-chat{query}"
 
 
+def build_report_url(group_id=None):
+    base_url = PUBLIC_BASE_URL or request.url_root.strip("/")
+    params = {}
+    if group_id:
+        params["group_id"] = group_id
+
+    query = f"?{urlencode(params)}" if params else ""
+    return f"{base_url}/report{query}"
+
+
 def get_source_group_id(source):
     return getattr(source, "group_id", None) or getattr(source, "room_id", None)
 
@@ -1226,7 +1825,8 @@ def handle_message(event):
                         "• จัดการสมาชิก - เพิ่ม/แก้ไขข้อมูลสมาชิกในกลุ่ม\n"
                         "• MedGuard AI - วิเคราะห์รูปสุขภาพและจัดการยา\n"
                         "• CareBot - ทำแบบประเมินสุขภาพจิต\n"
-                        "• เช็กอาการ - เช็กอินอาการผิดปกติ"
+                        "• เช็กอาการ - เช็กอินอาการผิดปกติ\n"
+                        "• report - เปิดรายงานภาพรวมผู้ป่วย"
                     )
                 ),
             )
@@ -1243,6 +1843,26 @@ def handle_message(event):
             intro_text = "MedGuard AI พร้อมช่วยดูรูปสุขภาพและรายการยาแล้วค้าบ"
             if is_locked:
                 intro_text = "ก่อนใช้ MedGuard AI ขอจัดการสมาชิกในกลุ่มให้เรียบร้อยก่อนนะค้าบ"
+            line_bot_api.reply_message(
+                event.reply_token,
+                messages=[
+                    TextSendMessage(text=intro_text),
+                    flex_message,
+                ],
+            )
+            return
+
+        if normalized_text in {"report", "รายงาน", "dashboard", "analytics"}:
+            group_id = get_source_group_id(event.source)
+            report_url = build_report_url(group_id) if group_id else None
+            is_locked = not group_has_registered_members(group_id)
+            flex_message = FlexSendMessage(
+                alt_text="Care Report",
+                contents=report_bubble(report_url, locked=is_locked),
+            )
+            intro_text = "เปิดรายงานภาพรวมให้แล้วครับ"
+            if is_locked:
+                intro_text = "ก่อนเปิดรายงาน ขอจัดการสมาชิกในกลุ่มให้เรียบร้อยก่อนนะครับ"
             line_bot_api.reply_message(
                 event.reply_token,
                 messages=[
