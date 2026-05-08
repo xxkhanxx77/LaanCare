@@ -57,23 +57,42 @@ def register_flex(register_url=None):
     return member_management_bubble(register_url)
 
 
-def features_bubbles(register_url=None, medicine_url=None, carebot_url=None, medguard_locked=False, carebot_locked=False):
+def features_bubbles(
+    register_url=None,
+    medicine_url=None,
+    carebot_url=None,
+    symptom_chat_url=None,
+    medguard_locked=False,
+    carebot_locked=False,
+    symptom_chat_locked=False,
+):
     return [
         member_management_bubble(register_url),
         medguard_ai_bubble(medicine_url, locked=medguard_locked),
         carebot_bubble(carebot_url, locked=carebot_locked),
+        symptom_chat_bubble(symptom_chat_url, locked=symptom_chat_locked),
     ]
 
 
-def features_carousel_flex(register_url=None, medicine_url=None, carebot_url=None, medguard_locked=False, carebot_locked=False):
+def features_carousel_flex(
+    register_url=None,
+    medicine_url=None,
+    carebot_url=None,
+    symptom_chat_url=None,
+    medguard_locked=False,
+    carebot_locked=False,
+    symptom_chat_locked=False,
+):
     return {
         "type": "carousel",
         "contents": features_bubbles(
             register_url,
             medicine_url,
             carebot_url,
+            symptom_chat_url,
             medguard_locked,
             carebot_locked,
+            symptom_chat_locked,
         ),
     }
 
@@ -283,6 +302,110 @@ def carebot_bubble(carebot_url=None, locked=False):
 
 def cerebot_bubble(carebot_url=None, locked=False):
     return carebot_bubble(carebot_url, locked)
+
+
+def symptom_chat_bubble(symptom_chat_url=None, locked=False):
+    action = {
+        "type": "postback",
+        "label": "เริ่มเช็กอาการ",
+        "data": "feature=symptom_chat",
+    }
+    button_color = "#55b82e"
+    hero_color = "#0f8f8c"
+    description = "เช็กอินอาการผิดปกติ คัดกรองความเสี่ยงเบื้องต้น และจำลอง alert ให้ผู้ดูแล"
+
+    if locked:
+        action = {
+            "type": "postback",
+            "label": "จัดการสมาชิกก่อน",
+            "data": "feature=symptom_chat_membership_required",
+        }
+        button_color = "#9aa8a0"
+        hero_color = "#7d8b83"
+        description = "กรุณาจัดการข้อมูลสมาชิกในกลุ่มก่อน แล้วค่อยใช้งาน Symptom Check-in"
+    elif symptom_chat_url:
+        action = {
+            "type": "uri",
+            "label": "เริ่มเช็กอาการ",
+            "uri": symptom_chat_url,
+        }
+
+    return {
+        "type": "bubble",
+        "body": {
+            "type": "box",
+            "layout": "vertical",
+            "spacing": "md",
+            "paddingAll": "20px",
+            "backgroundColor": "#f7fdf1",
+            "contents": [
+                {
+                    "type": "box",
+                    "layout": "vertical",
+                    "height": "72px",
+                    "justifyContent": "center",
+                    "alignItems": "center",
+                    "backgroundColor": hero_color,
+                    "cornerRadius": "md",
+                    "contents": [
+                        {
+                            "type": "text",
+                            "text": "เช็กอาการ",
+                            "size": "xxl",
+                            "weight": "bold",
+                            "color": "#ffffff",
+                            "align": "center",
+                        }
+                    ],
+                },
+                {
+                    "type": "text",
+                    "text": "Symptom Check-in",
+                    "weight": "bold",
+                    "size": "lg",
+                    "color": "#14301f",
+                    "wrap": True,
+                },
+                {
+                    "type": "text",
+                    "text": description,
+                    "size": "sm",
+                    "color": "#5b725f",
+                    "wrap": True,
+                },
+                {
+                    "type": "separator",
+                    "color": "#d8ead3",
+                },
+                feature_row(
+                    "EMS Screening",
+                    "เลือกกลุ่มอาการจากชุดความรู้ EMS",
+                    "#0f8f8c",
+                ),
+                feature_row(
+                    "Risk Level",
+                    "สรุป green, yellow, red จากคำตอบ",
+                    "#55b82e",
+                ),
+                feature_row(
+                    "Caregiver Alert",
+                    "จำลองการแจ้งเตือนผู้ดูแลเมื่อพบความเสี่ยง",
+                    "#3267b7",
+                ),
+                {
+                    "type": "button",
+                    "style": "primary",
+                    "height": "sm",
+                    "color": button_color,
+                    "action": action,
+                },
+            ],
+        },
+    }
+
+
+def chat_symtom_bubble(symptom_chat_url=None, locked=False):
+    return symptom_chat_bubble(symptom_chat_url, locked)
 
 
 def feature_row(title, description, color):
