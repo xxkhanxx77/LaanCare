@@ -1,16 +1,16 @@
-import difflib
 import io
 import json
 import os
 
 try:
     from .storage import list_medicines
+    from .drug_interaction import SEARCH_ENGINE, INTERACTIONS, find_interactions
 except ImportError:
     from storage import list_medicines
+    from drug_interaction import SEARCH_ENGINE, INTERACTIONS, find_interactions
 
 
 BASE_DIR = os.path.dirname(__file__)
-DRUG_KNOWLEDGE_PATH = os.path.join(BASE_DIR, "drug_knowledge.json")
 OCR_MODEL_NAMES = ["gemini-flash-lite-latest"]
 
 OCR_PROMPT = """
@@ -136,57 +136,33 @@ def parse_model_json(text):
         raise LocalOCRError("AI returned invalid data format") from error
 
 
-def load_drug_knowledge():
-    if not os.path.exists(DRUG_KNOWLEDGE_PATH):
-        return {"drugs": []}
-
-    try:
-        with open(DRUG_KNOWLEDGE_PATH, "r", encoding="utf-8") as file:
-            return json.load(file)
-    except Exception:
-        return {"drugs": []}
-
-
-def get_closest_drug(name, drug_kb):
-    drugs = drug_kb.get("drugs", [])
-    if not drugs:
-        return None
-
-    names = [drug["name"] for drug in drugs]
-    matches = difflib.get_close_matches(name, names, n=1, cutoff=0.6)
-    if not matches:
-        return None
-
-    return next((drug for drug in drugs if drug["name"] == matches[0]), None)
-
-
 def check_interactions(new_medicine_name, group_id=None):
-    drug_kb = load_drug_knowledge()
     existing_medicine_names = [
         medicine["medicine_name"]
         for medicine in list_medicines(group_id)
         if medicine.get("medicine_name")
     ]
-    new_drug = get_closest_drug(new_medicine_name, drug_kb)
-    reports = []
 
-    if new_drug:
-        reports.append(f"ตรวจพบข้อมูลยา: {new_drug['name']}")
-
-        for existing_name in existing_medicine_names:
-            existing_drug = get_closest_drug(existing_name, drug_kb)
-            if not existing_drug:
-                continue
-
-            for interaction in new_drug.get("interactions", []):
-                if interaction["target"].lower() == existing_drug["name"].lower():
-                    reports.append(f"คำเตือน: พบความเสี่ยงระหว่าง {new_drug['name']} และ {existing_drug['name']}")
-                    reports.append(f"- รายละเอียด: {interaction['risk']}")
-                    reports.append(f"- ความรุนแรง: {interaction['severity']}")
-
-    if not reports:
+    new_match = SEARCH_ENGINE.match(new_medicine_name)
+    if not new_match.get("matched"):
         if not existing_medicine_names:
             return "ยังไม่มีการลงทะเบียนยาอื่นๆ ไม่พบความเสี่ยงที่ขัดกันในขณะนี้"
         return f"ไม่พบข้อมูลความเสี่ยงที่ขัดกันของ {new_medicine_name} ในฐานข้อมูลตัวอย่างของเรา"
 
+    existing_matches = [SEARCH_ENGINE.match(name) for name in existing_medicine_names]
+    detected = find_interactions([new_match] + existing_matches, INTERACTIONS)
+
+    matched_name = new_match["selected"]["generic_name"]
+    if not detected:
+        if not existing_medicine_names:
+            return "ยังไม่มีการลงทะเบียนยาอื่นๆ ไม่พบความเสี่ยงที่ขัดกันในขณะนี้"
+        return f"ไม่พบข้อมูลความเสี่ยงที่ขัดกันของ {matched_name} ในฐานข้อมูลตัวอย่างของเรา"
+
+    reports = [f"ตรวจพบข้อมูลยา: {matched_name}"]
+    for ix in detected:
+        reports.append(f"คำเตือน: พบความเสี่ยงระหว่าง {ix['group_1']} และ {ix['group_2']}")
+        reports.append(f"- รายละเอียด: {ix['interaction_risk']}")
+        reports.append(f"- ความรุนแรง: {ix['interaction_severity']}")
+        if ix.get("possible_symptoms"):
+            reports.append(f"- อาการที่อาจเกิดขึ้น: {ix['possible_symptoms']}")
     return "\n".join(reports)

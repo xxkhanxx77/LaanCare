@@ -3,6 +3,7 @@ try:
     from .config import *
     from .flex import *
     from .medguard_ocr import OCRServiceError, perform_health_ocr
+    from .ocr_engine import check_interactions
     from .storage import (
         delete_medicine,
         delete_registration,
@@ -24,6 +25,7 @@ except ImportError:
     from config import *
     from flex import *
     from medguard_ocr import OCRServiceError, perform_health_ocr
+    from ocr_engine import check_interactions
     from storage import (
         delete_medicine,
         delete_registration,
@@ -355,6 +357,12 @@ def medicines():
             items=items or [empty_medicine_item()],
         ), 400
 
+    interaction_reports = []
+    for item in items:
+        report = check_interactions(item["medicine_name"], group_id)
+        if "คำเตือน" in report:
+            interaction_reports.append({"medicine": item["medicine_name"], "report": report})
+
     saved_items = []
     files = request.files.getlist("medicine_image[]")
     for index, item in enumerate(items):
@@ -365,7 +373,12 @@ def medicines():
 
     medicine_ids = save_medicine_items(group_id, saved_items)
 
-    return redirect(url_for("medicines_success", count=len(medicine_ids), group_id=group_id))
+    return render_template(
+        "medicine_success.html",
+        count=len(medicine_ids),
+        group_id=group_id,
+        interaction_reports=interaction_reports,
+    )
 
 
 @app.get("/medicines/success")
@@ -388,8 +401,9 @@ def medicines_api():
         if errors:
             return jsonify({"success": False, "errors": errors}), 400
 
+        interaction_report = check_interactions(item["medicine_name"], group_id)
         medicine_id = save_medicine_item(group_id, item)
-        return jsonify({"success": True, "medicine_id": medicine_id}), 201
+        return jsonify({"success": True, "medicine_id": medicine_id, "interaction_report": interaction_report}), 201
 
     group_id = request.args.get("group_id", "").strip() or None
     return jsonify({"medicines": list_medicines(group_id)})
