@@ -68,6 +68,19 @@ def init_db():
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS carebot_assessments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id TEXT,
+                line_user_id TEXT,
+                assessment_type TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                responses_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
 
 
 def ensure_column(connection, table_name, column_name, column_type):
@@ -453,3 +466,66 @@ def list_ocr_results(group_id=None):
         results.append(result)
 
     return results
+
+
+def save_carebot_assessment(data):
+    init_db()
+    created_at = datetime.now(timezone.utc).isoformat()
+    responses_json = json.dumps(data.get("responses", {}), ensure_ascii=False)
+
+    with get_connection() as connection:
+        cursor = connection.execute(
+            """
+            INSERT INTO carebot_assessments (
+                group_id,
+                line_user_id,
+                assessment_type,
+                score,
+                responses_json,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                data.get("group_id"),
+                data.get("line_user_id"),
+                data["assessment_type"],
+                int(data["score"]),
+                responses_json,
+                created_at,
+            ),
+        )
+
+    return cursor.lastrowid
+
+
+def list_carebot_assessments(group_id=None):
+    init_db()
+
+    with get_connection() as connection:
+        if group_id:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM carebot_assessments
+                WHERE group_id = ?
+                ORDER BY created_at DESC, id DESC
+                """,
+                (group_id,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                """
+                SELECT *
+                FROM carebot_assessments
+                ORDER BY created_at DESC, id DESC
+                """
+            ).fetchall()
+
+    assessments = []
+    for row in rows:
+        assessment = dict(row)
+        assessment["responses"] = json.loads(assessment.pop("responses_json") or "{}")
+        assessments.append(assessment)
+
+    return assessments
