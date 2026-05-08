@@ -4,3 +4,5 @@ numpy
 line-bot-sdk
 python-dotenv
 flask
+google-genai
+pillow

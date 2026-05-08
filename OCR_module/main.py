@@ -19,6 +19,7 @@ from PIL import Image
 
 # Load environment variables
 load_dotenv()
+BASE_DIR = os.path.dirname(__file__)
 
 # Configure Gemini API with the NEW SDK
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -81,7 +82,7 @@ async def get_api_key(api_key: str = Security(api_key_header)):
     return api_key
 
 # --- Database Setup ---
-DB_PATH = "medicines.db"
+DB_PATH = os.path.join(BASE_DIR, "medicines.db")
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
@@ -105,7 +106,7 @@ def init_db():
 init_db()
 
 # --- Static Files ---
-static_dir = os.path.join(os.path.dirname(__file__), "static")
+static_dir = os.path.join(BASE_DIR, "static")
 if not os.path.exists(static_dir):
     os.makedirs(static_dir)
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -255,7 +256,7 @@ async def perform_ocr(
         raise HTTPException(status_code=500, detail=str(e))
 
 # Load Local Drug Knowledge
-DRUG_KNOWLEDGE_PATH = "drug_knowledge.json"
+DRUG_KNOWLEDGE_PATH = os.path.join(BASE_DIR, "drug_knowledge.json")
 drug_kb = {"drugs": []}
 if os.path.exists(DRUG_KNOWLEDGE_PATH):
     try:

@@ -3,126 +3,357 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Register Care Group</title>
+    <title>Member Management</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='register.css') }}">
 </head>
 <body>
     <main class="page-shell">
-        <section class="register-panel" aria-labelledby="register-title">
-            <div class="brand-strip">
-                <div class="brand-mark" aria-hidden="true">+</div>
-                <div>
-                    <p class="eyebrow">Health Care Group</p>
-                    <h1 id="register-title">ลงทะเบียนสมาชิก</h1>
-                </div>
-            </div>
-
-            <div class="group-badge">
-                <span>Group ID</span>
-                <strong>{{ group_id }}</strong>
-            </div>
-
-            <form method="post" class="register-form" novalidate>
-                <input type="hidden" name="group_id" value="{{ group_id }}">
-                <input type="hidden" name="line_user_id" value="{{ values.get('line_user_id', '') }}">
-
-                <div class="field-grid two-columns">
-                    <label class="field">
-                        <span>ชื่อ</span>
-                        <input name="first_name" value="{{ values.get('first_name', '') }}" autocomplete="given-name" required>
-                        {% if errors.get('first_name') %}<small>{{ errors.first_name }}</small>{% endif %}
-                    </label>
-
-                    <label class="field">
-                        <span>นามสกุล</span>
-                        <input name="last_name" value="{{ values.get('last_name', '') }}" autocomplete="family-name" required>
-                        {% if errors.get('last_name') %}<small>{{ errors.last_name }}</small>{% endif %}
-                    </label>
-                </div>
-
-                <label class="field">
-                    <span>Email</span>
-                    <input type="email" name="email" value="{{ values.get('email', '') }}" autocomplete="email" inputmode="email" required>
-                    {% if errors.get('email') %}<small>{{ errors.email }}</small>{% endif %}
-                </label>
-
-                <label class="field">
-                    <span>เบอร์โทร</span>
-                    <input type="tel" name="phone" value="{{ values.get('phone', '') }}" autocomplete="tel" inputmode="tel" required>
-                    {% if errors.get('phone') %}<small>{{ errors.phone }}</small>{% endif %}
-                </label>
-
-                <div class="field-grid two-columns">
-                    <fieldset class="choice-field">
-                        <legend>เพศ</legend>
-                        <div class="segmented">
-                            <label>
-                                <input type="radio" name="gender" value="female" {% if values.get('gender') == 'female' %}checked{% endif %}>
-                                <span>หญิง</span>
-                            </label>
-                            <label>
-                                <input type="radio" name="gender" value="male" {% if values.get('gender') == 'male' %}checked{% endif %}>
-                                <span>ชาย</span>
-                            </label>
-                            <label>
-                                <input type="radio" name="gender" value="other" {% if values.get('gender') == 'other' %}checked{% endif %}>
-                                <span>อื่นๆ</span>
-                            </label>
-                        </div>
-                        {% if errors.get('gender') %}<small>{{ errors.gender }}</small>{% endif %}
-                    </fieldset>
-
-                    <fieldset class="choice-field">
-                        <legend>Role</legend>
-                        <div class="segmented role-segmented">
-                            <label>
-                                <input type="radio" name="role" value="caregiver" {% if values.get('role', 'caregiver') == 'caregiver' %}checked{% endif %}>
-                                <span>Caregiver</span>
-                            </label>
-                            <label>
-                                <input type="radio" name="role" value="patient" {% if values.get('role') == 'patient' %}checked{% endif %}>
-                                <span>Patient</span>
-                            </label>
-                        </div>
-                        {% if errors.get('role') %}<small>{{ errors.role }}</small>{% endif %}
-                    </fieldset>
-                </div>
-
-                <div id="patient-fields" class="patient-fields">
-                    <div class="field-grid two-columns">
-                        <label class="field">
-                            <span>Height (cm)</span>
-                            <input type="number" step="0.1" min="0" name="height_cm" value="{{ values.get('height_cm', '') }}" inputmode="decimal">
-                            {% if errors.get('height_cm') %}<small>{{ errors.height_cm }}</small>{% endif %}
-                        </label>
-
-                        <label class="field">
-                            <span>Weight (kg)</span>
-                            <input type="number" step="0.1" min="0" name="weight_kg" value="{{ values.get('weight_kg', '') }}" inputmode="decimal">
-                            {% if errors.get('weight_kg') %}<small>{{ errors.weight_kg }}</small>{% endif %}
-                        </label>
+        <section class="register-panel member-panel" aria-labelledby="member-title">
+            <div class="member-toolbar">
+                <div class="brand-strip">
+                    <div class="brand-mark" aria-hidden="true">+</div>
+                    <div>
+                        <p class="eyebrow">Health Care Group</p>
+                        <h1 id="member-title">Member Management</h1>
                     </div>
                 </div>
-
-                <button class="submit-button" type="submit">
-                    <span aria-hidden="true">✓</span>
-                    บันทึกข้อมูล
+                <button id="new-member-button" class="secondary-button" type="button">
+                    <span aria-hidden="true">+</span>
+                    เพิ่มสมาชิก
                 </button>
-            </form>
+            </div>
+
+            <div id="message-panel" class="message-panel" role="status" hidden></div>
+
+            <section class="member-editor" aria-labelledby="editor-title">
+                <div class="section-heading">
+                    <div>
+                        <p id="editor-mode" class="eyebrow">New Member</p>
+                        <h2 id="editor-title">ข้อมูลสมาชิก</h2>
+                    </div>
+                    <button id="cancel-edit-button" class="text-button" type="button" hidden>ยกเลิกแก้ไข</button>
+                </div>
+
+                <form id="member-form" class="register-form" novalidate>
+                    <input type="hidden" name="id">
+                    <input type="hidden" name="group_id" value="{{ group_id }}">
+                    <input type="hidden" name="line_user_id" value="{{ values.get('line_user_id', '') }}">
+
+                    <div class="field-grid two-columns">
+                        <label class="field">
+                            <span>ชื่อ</span>
+                            <input name="first_name" autocomplete="given-name" required>
+                            <small data-error-for="first_name"></small>
+                        </label>
+
+                        <label class="field">
+                            <span>นามสกุล</span>
+                            <input name="last_name" autocomplete="family-name" required>
+                            <small data-error-for="last_name"></small>
+                        </label>
+                    </div>
+
+                    <div class="field-grid two-columns">
+                        <label class="field">
+                            <span>Email</span>
+                            <input type="email" name="email" autocomplete="email" inputmode="email" required>
+                            <small data-error-for="email"></small>
+                        </label>
+
+                        <label class="field">
+                            <span>เบอร์โทร</span>
+                            <input type="tel" name="phone" autocomplete="tel" inputmode="tel" required>
+                            <small data-error-for="phone"></small>
+                        </label>
+                    </div>
+
+                    <div class="field-grid two-columns">
+                        <fieldset class="choice-field">
+                            <legend>เพศ</legend>
+                            <div class="segmented">
+                                <label>
+                                    <input type="radio" name="gender" value="female">
+                                    <span>หญิง</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="gender" value="male">
+                                    <span>ชาย</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="gender" value="other">
+                                    <span>อื่นๆ</span>
+                                </label>
+                            </div>
+                            <small data-error-for="gender"></small>
+                        </fieldset>
+
+                        <fieldset class="choice-field">
+                            <legend>Role</legend>
+                            <div class="segmented role-segmented">
+                                <label>
+                                    <input type="radio" name="role" value="caregiver">
+                                    <span>Caregiver</span>
+                                </label>
+                                <label>
+                                    <input type="radio" name="role" value="patient">
+                                    <span>Patient</span>
+                                </label>
+                            </div>
+                            <small data-error-for="role"></small>
+                        </fieldset>
+                    </div>
+
+                    <div id="patient-fields" class="patient-fields">
+                        <div class="field-grid two-columns">
+                            <label class="field">
+                                <span>Height (cm)</span>
+                                <input type="number" step="0.1" min="0" name="height_cm" inputmode="decimal">
+                                <small data-error-for="height_cm"></small>
+                            </label>
+
+                            <label class="field">
+                                <span>Weight (kg)</span>
+                                <input type="number" step="0.1" min="0" name="weight_kg" inputmode="decimal">
+                                <small data-error-for="weight_kg"></small>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button id="submit-button" class="submit-button" type="submit">
+                            <span aria-hidden="true">✓</span>
+                            บันทึกสมาชิก
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <section class="member-directory" aria-labelledby="directory-title">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Members</p>
+                        <h2 id="directory-title">สมาชิกในกลุ่ม</h2>
+                    </div>
+                    <button id="refresh-button" class="secondary-button compact-button" type="button">รีเฟรช</button>
+                </div>
+
+                <div id="member-list" class="member-list"></div>
+                <p id="empty-members" class="empty-state" hidden>ยังไม่มีสมาชิกในกลุ่มนี้</p>
+            </section>
         </section>
     </main>
 
     <script>
-        const roleInputs = document.querySelectorAll('input[name="role"]');
+        const groupId = {{ group_id | tojson }};
+        const initialLineUserId = {{ values.get('line_user_id', '') | tojson }};
+        const memberForm = document.getElementById('member-form');
+        const memberList = document.getElementById('member-list');
+        const emptyMembers = document.getElementById('empty-members');
+        const messagePanel = document.getElementById('message-panel');
         const patientFields = document.getElementById('patient-fields');
+        const editorMode = document.getElementById('editor-mode');
+        const submitButton = document.getElementById('submit-button');
+        const cancelEditButton = document.getElementById('cancel-edit-button');
+        const newMemberButton = document.getElementById('new-member-button');
+        const refreshButton = document.getElementById('refresh-button');
+        const roleInputs = [...document.querySelectorAll('input[name="role"]')];
+        let registrations = [];
+
+        function setMessage(message, type = 'error') {
+            messagePanel.hidden = !message;
+            messagePanel.classList.toggle('success-message', type === 'success');
+            messagePanel.classList.toggle('error-message', type !== 'success');
+            messagePanel.textContent = message || '';
+        }
+
+        function clearErrors() {
+            document.querySelectorAll('[data-error-for]').forEach((node) => {
+                node.textContent = '';
+            });
+        }
+
+        function showErrors(errors = {}) {
+            Object.entries(errors).forEach(([field, message]) => {
+                const node = document.querySelector(`[data-error-for="${field}"]`);
+                if (node) {
+                    node.textContent = message;
+                }
+            });
+        }
 
         function syncPatientFields() {
-            const selectedRole = document.querySelector('input[name="role"]:checked')?.value;
+            const selectedRole = memberForm.elements.role.value;
             patientFields.hidden = selectedRole !== 'patient';
         }
 
+        function currentLineUserIsRegistered() {
+            return Boolean(initialLineUserId && registrations.some((member) => member.line_user_id === initialLineUserId));
+        }
+
+        function resetForm() {
+            memberForm.reset();
+            memberForm.elements.id.value = '';
+            memberForm.elements.group_id.value = groupId;
+            memberForm.elements.line_user_id.value = currentLineUserIsRegistered() ? '' : initialLineUserId;
+            memberForm.elements.role.value = 'caregiver';
+            editorMode.textContent = 'New Member';
+            submitButton.lastChild.textContent = ' บันทึกสมาชิก';
+            cancelEditButton.hidden = true;
+            clearErrors();
+            setMessage('');
+            syncPatientFields();
+        }
+
+        function getPayload() {
+            return {
+                group_id: groupId,
+                line_user_id: memberForm.elements.line_user_id.value,
+                first_name: memberForm.elements.first_name.value,
+                last_name: memberForm.elements.last_name.value,
+                email: memberForm.elements.email.value,
+                phone: memberForm.elements.phone.value,
+                gender: memberForm.elements.gender.value,
+                role: memberForm.elements.role.value,
+                height_cm: memberForm.elements.height_cm.value,
+                weight_kg: memberForm.elements.weight_kg.value,
+            };
+        }
+
+        function setFormValue(name, value) {
+            memberForm.elements[name].value = value ?? '';
+        }
+
+        function editMember(member) {
+            setFormValue('id', member.id);
+            setFormValue('group_id', member.group_id || groupId);
+            setFormValue('line_user_id', member.line_user_id);
+            setFormValue('first_name', member.first_name);
+            setFormValue('last_name', member.last_name);
+            setFormValue('email', member.email);
+            setFormValue('phone', member.phone);
+            setFormValue('gender', member.gender);
+            setFormValue('role', member.role || 'caregiver');
+            setFormValue('height_cm', member.height_cm);
+            setFormValue('weight_kg', member.weight_kg);
+            editorMode.textContent = 'Edit Member';
+            submitButton.lastChild.textContent = ' อัพเดทสมาชิก';
+            cancelEditButton.hidden = false;
+            clearErrors();
+            setMessage('');
+            syncPatientFields();
+            memberForm.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        function formatRole(role) {
+            return role === 'patient' ? 'Patient' : 'Caregiver';
+        }
+
+        function formatProfile(member) {
+            const details = [
+                member.email,
+                member.phone,
+                member.gender,
+            ];
+
+            if (member.role === 'patient') {
+                details.push(member.height_cm ? `${member.height_cm} cm` : '');
+                details.push(member.weight_kg ? `${member.weight_kg} kg` : '');
+            }
+
+            return details.filter(Boolean).join(' · ');
+        }
+
+        function renderMembers() {
+            memberList.innerHTML = '';
+            emptyMembers.hidden = registrations.length > 0;
+
+            registrations.forEach((member) => {
+                const item = document.createElement('article');
+                item.className = 'member-item';
+                item.innerHTML = `
+                    <div class="member-avatar" aria-hidden="true"></div>
+                    <div class="member-copy">
+                        <div class="member-line">
+                            <h3></h3>
+                            <span class="role-pill"></span>
+                        </div>
+                        <p class="member-meta"></p>
+                    </div>
+                    <div class="member-actions">
+                        <button class="icon-button edit-button" type="button" aria-label="แก้ไขสมาชิก">Edit</button>
+                        <button class="icon-button delete-button" type="button" aria-label="ลบสมาชิก">Delete</button>
+                    </div>
+                `;
+                item.querySelector('.member-avatar').textContent = `${member.first_name?.[0] || ''}${member.last_name?.[0] || ''}` || '+';
+                item.querySelector('h3').textContent = `${member.first_name || ''} ${member.last_name || ''}`.trim();
+                item.querySelector('.role-pill').textContent = formatRole(member.role);
+                item.querySelector('.member-meta').textContent = formatProfile(member);
+                item.querySelector('.edit-button').addEventListener('click', () => editMember(member));
+                item.querySelector('.delete-button').addEventListener('click', () => deleteMember(member.id));
+                memberList.appendChild(item);
+            });
+        }
+
+        async function loadMembers() {
+            const response = await fetch(`/api/registrations?group_id=${encodeURIComponent(groupId)}`);
+            const payload = await response.json();
+            registrations = payload.registrations || [];
+            renderMembers();
+        }
+
+        async function saveMember(event) {
+            event.preventDefault();
+            clearErrors();
+            setMessage('');
+
+            const id = memberForm.elements.id.value;
+            const response = await fetch(id ? `/api/registrations/${id}` : '/api/registrations', {
+                method: id ? 'PUT' : 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(getPayload()),
+            });
+            const payload = await response.json();
+
+            if (!response.ok || !payload.success) {
+                showErrors(payload.errors || {});
+                setMessage(payload.error || 'บันทึกสมาชิกไม่สำเร็จ');
+                return;
+            }
+
+            await loadMembers();
+            resetForm();
+            setMessage(id ? 'อัพเดทสมาชิกแล้ว' : 'เพิ่มสมาชิกแล้ว', 'success');
+        }
+
+        async function deleteMember(id) {
+            setMessage('');
+            const confirmed = window.confirm('ลบสมาชิกคนนี้?');
+            if (!confirmed) {
+                return;
+            }
+
+            const response = await fetch(`/api/registrations/${id}`, { method: 'DELETE' });
+            const payload = await response.json();
+            if (!response.ok || !payload.success) {
+                setMessage(payload.error || 'ลบสมาชิกไม่สำเร็จ');
+                return;
+            }
+
+            await loadMembers();
+            resetForm();
+            setMessage('ลบสมาชิกแล้ว', 'success');
+        }
+
         roleInputs.forEach((input) => input.addEventListener('change', syncPatientFields));
-        syncPatientFields();
+        memberForm.addEventListener('submit', saveMember);
+        cancelEditButton.addEventListener('click', resetForm);
+        newMemberButton.addEventListener('click', resetForm);
+        refreshButton.addEventListener('click', loadMembers);
+
+        loadMembers().then(resetForm).catch(() => {
+            resetForm();
+            setMessage('โหลดรายชื่อสมาชิกไม่สำเร็จ');
+        });
     </script>
 </body>
 </html>
