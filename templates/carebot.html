@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CareBot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='carebot.css') }}">
+</head>
+<body>
+    <main class="carebot-shell">
+        <section class="carebot-panel" aria-labelledby="carebot-title">
+            <header class="carebot-header">
+                <div class="carebot-mark" aria-hidden="true">ใจ</div>
+                <div>
+                    <p class="eyebrow">CareBot Health</p>
+                    <h1 id="carebot-title">แบบประเมินสุขภาพจิต</h1>
+                    <p id="carebot-subtitle" class="subtitle">คำถามที่ 1 จาก 2</p>
+                </div>
+            </header>
+
+            <input id="group-id" type="hidden" value="{{ group_id }}">
+            <input id="line-user-id" type="hidden" value="{{ line_user_id }}">
+            <div id="message-panel" class="message-panel" role="status" hidden></div>
+
+            <section id="assessment-view">
+                <div class="progress-bar" aria-hidden="true">
+                    <div id="progress-fill" class="progress-fill"></div>
+                </div>
+
+                <article class="question-card animate-slide">
+                    <h2 id="question-text" class="question-text"></h2>
+                    <div id="options-grid" class="options-grid"></div>
+                </article>
+            </section>
+
+            <section id="results-view" class="result-card animate-slide" hidden>
+                <p class="eyebrow">Assessment Result</p>
+                <h2>การประเมินเสร็จสิ้น</h2>
+                <div id="score-display" class="score-display">0</div>
+                <p id="score-label" class="subtitle">คะแนนรวม</p>
+                <div id="severity-badge" class="severity-badge" hidden></div>
+                <p id="action-text" class="action-text"></p>
+                <div class="notice-box">
+                    <strong>หมายเหตุ:</strong>
+                    แบบประเมินนี้เป็นเพียงเครื่องมือคัดกรองเบื้องต้น ไม่ใช่การวินิจฉัยทางการแพทย์
+                    หากมีความคิดทำร้ายตัวเองหรือรู้สึกไม่ปลอดภัย ควรติดต่อคนใกล้ตัวหรือหน่วยบริการฉุกเฉินทันที
+                </div>
+            <div class="button-row">
+                <button id="talk-ai-button" class="primary-button" type="button">ปรึกษา CareBot</button>
+                <button id="restart-button" class="secondary-button" type="button">ทำแบบประเมินอีกครั้ง</button>
+                <a class="line-button" href="https://lin.ee/ZQJsOD8">กลับไปที่ LINE</a>
+            </div>
+        </section>
+
+            <section id="chat-view" class="chat-view animate-slide" hidden>
+                <div id="chat-messages" class="chat-messages"></div>
+                <form id="chat-form" class="chat-input-area">
+                    <input id="chat-input" class="chat-input" autocomplete="off" placeholder="พิมพ์ข้อความที่นี่...">
+                    <button id="send-button" class="send-button" type="submit">ส่ง</button>
+                </form>
+                <button id="back-results-button" class="secondary-button full-button" type="button">กลับไปหน้าผลสรุป</button>
+            </section>
+
+            <footer class="carebot-footer">CareBot Health</footer>
+        </section>
+    </main>
+
+    <script>
+        const carebotPayload = {{ carebot_payload | tojson }};
+        const groupId = document.getElementById('group-id').value;
+        const lineUserId = document.getElementById('line-user-id').value;
+        const resultMap = [
+            {
+                max: 4,
+                severity: 'ไม่มีอาการของโรคซึมเศร้าหรือมีอาการในระดับน้อยมาก',
+                action: 'ไม่ต้องทำอะไร',
+            },
+            {
+                max: 9,
+                severity: 'มีอาการของโรคซึมเศร้าในระดับน้อย',
+                action: 'ควรติดตามสังเกตอาการ และทำแบบทดสอบซ้ำในอีก 2-4 สัปดาห์',
+            },
+            {
+                max: 14,
+                severity: 'มีอาการของโรคซึมเศร้าในระดับปานกลาง',
+                action: 'ควรปรึกษาแพทย์หรือผู้เชี่ยวชาญเพื่อวางแผนการรักษา',
+            },
+            {
+                max: 19,
+                severity: 'มีอาการของโรคซึมเศร้าในระดับค่อนข้างรุนแรง',
+                action: 'ควรปรึกษาแพทย์เพื่อรับการรักษาด้วยยาและ/หรือจิตบำบัด',
+            },
+            {
+                max: Infinity,
+                severity: 'มีอาการของโรคซึมเศร้าในระดับรุนแรง',
+                action: 'ควรปรึกษาแพทย์โดยด่วนเพื่อรับการรักษา',
+            },
+        ];
+
+        const subtitle = document.getElementById('carebot-subtitle');
+        const assessmentView = document.getElementById('assessment-view');
+        const resultsView = document.getElementById('results-view');
+        const chatView = document.getElementById('chat-view');
+        const progressFill = document.getElementById('progress-fill');
+        const questionText = document.getElementById('question-text');
+        const optionsGrid = document.getElementById('options-grid');
+        const scoreDisplay = document.getElementById('score-display');
+        const scoreLabel = document.getElementById('score-label');
+        const severityBadge = document.getElementById('severity-badge');
+        const actionText = document.getElementById('action-text');
+        const messagePanel = document.getElementById('message-panel');
+        const chatMessages = document.getElementById('chat-messages');
+        const chatForm = document.getElementById('chat-form');
+        const chatInput = document.getElementById('chat-input');
+        const sendButton = document.getElementById('send-button');
+
+        let currentStep = 'PHQ2';
+        let currentIndex = 0;
+        let responses = {};
+        let totalScore = 0;
+        let chatHistory = [];
+
+        function getQuestions() {
+            return currentStep === 'PHQ2' ? carebotPayload.phq2_questions : carebotPayload.phq9_questions;
+        }
+
+        function getPHQ9Result(score) {
+            return resultMap.find((item) => score <= item.max);
+        }
+
+        function setMessage(message, type = 'error') {
+            messagePanel.hidden = !message;
+            messagePanel.classList.toggle('success-message', type === 'success');
+            messagePanel.classList.toggle('error-message', type !== 'success');
+            messagePanel.textContent = message || '';
+        }
+
+        function showView(view) {
+            assessmentView.hidden = view !== 'assessment';
+            resultsView.hidden = view !== 'results';
+            chatView.hidden = view !== 'chat';
+        }
+
+        function renderQuestion() {
+            const questions = getQuestions();
+            const question = questions[currentIndex];
+            subtitle.textContent = `คำถามที่ ${currentIndex + 1} จาก ${questions.length}`;
+            questionText.textContent = question.text;
+            progressFill.style.width = `${((currentIndex + 1) / questions.length) * 100}%`;
+            optionsGrid.innerHTML = '';
+
+            question.options.forEach((option) => {
+                const button = document.createElement('button');
+                button.className = 'option-button';
+                button.type = 'button';
+                button.textContent = option.label;
+                button.addEventListener('click', () => selectAnswer(option.value));
+                optionsGrid.appendChild(button);
+            });
+        }
+
+        function selectAnswer(value) {
+            const questions = getQuestions();
+            const question = questions[currentIndex];
+            responses = { ...responses, [question.id]: value };
+            totalScore = Object.values(responses).reduce((sum, item) => sum + Number(item), 0);
+
+            setTimeout(() => {
+                if (currentIndex < questions.length - 1) {
+                    currentIndex += 1;
+                    renderQuestion();
+                    return;
+                }
+
+                completeStep();
+            }, 180);
+        }
+
+        function completeStep() {
+            if (currentStep === 'PHQ2' && totalScore >= 3) {
+                currentStep = 'PHQ9';
+                currentIndex = 0;
+                renderQuestion();
+                return;
+            }
+
+            renderResults();
+            if (currentStep === 'PHQ9') {
+                saveAssessment();
+            }
+        }
+
+        async function saveAssessment() {
+            try {
+                await fetch('/api/carebot/assessments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        group_id: groupId,
+                        line_user_id: lineUserId,
+                        type: currentStep === 'PHQ9' ? 'PHQ-9' : 'PHQ-2',
+                        score: totalScore,
+                        responses,
+                    }),
+                });
+            } catch (error) {
+                console.error('Failed to save assessment:', error);
+            }
+        }
+
+        function renderResults() {
+            const isPHQ9 = Object.keys(responses).length > 2;
+            showView('results');
+            subtitle.textContent = 'ผลการประเมินของคุณ';
+            scoreDisplay.textContent = totalScore;
+            scoreLabel.textContent = `คะแนนรวม (${isPHQ9 ? 'PHQ-9' : 'PHQ-2'})`;
+
+            if (isPHQ9) {
+                const result = getPHQ9Result(totalScore);
+                severityBadge.hidden = false;
+                severityBadge.textContent = result.severity;
+                actionText.textContent = result.action;
+            } else {
+                severityBadge.hidden = true;
+                actionText.textContent = totalScore >= 3
+                    ? 'คะแนนของคุณบ่งชี้ว่าอาจมีความเสี่ยง'
+                    : 'คะแนนของคุณอยู่ในเกณฑ์ปกติ ไม่พบความเสี่ยงของโรคซึมเศร้าในขณะนี้';
+            }
+        }
+
+        function resetAssessment() {
+            currentStep = 'PHQ2';
+            currentIndex = 0;
+            responses = {};
+            totalScore = 0;
+            chatHistory = [];
+            setMessage('');
+            showView('assessment');
+            renderQuestion();
+        }
+
+        function initialChatText() {
+            const isPHQ9 = Object.keys(responses).length > 2;
+            if (!isPHQ9) {
+                return 'สวัสดีครับ ผม CareBot ยินดีที่ได้คุยด้วยครับ วันนี้คุณรู้สึกอย่างไรบ้างครับ?';
+            }
+
+            const result = getPHQ9Result(totalScore);
+            if (totalScore >= 10) {
+                return `ผมเห็นผลคะแนนของคุณอยู่ที่ ${totalScore} คะแนน ซึ่งอยู่ในระดับ${result.severity} ผมพร้อมรับฟังคุณเสมอ มีอะไรที่อยากเล่าให้ฟังไหมครับ?`;
+            }
+
+            return `ดีใจด้วยครับที่คุณมีคะแนนสุขภาพจิตอยู่ในเกณฑ์ดี (${totalScore} คะแนน) มีวิธีดูแลใจตัวเองอะไรที่อยากแชร์ไหมครับ?`;
+        }
+
+        function openChat() {
+            showView('chat');
+            subtitle.textContent = 'ห้องสนทนากับ CareBot';
+            chatHistory = [{ role: 'ai', text: initialChatText() }];
+            renderChat();
+        }
+
+        function renderChat() {
+            chatMessages.innerHTML = '';
+            chatHistory.forEach((message) => {
+                const item = document.createElement('div');
+                item.className = `chat-message ${message.role}`;
+                item.textContent = message.text;
+                chatMessages.appendChild(item);
+            });
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        async function sendChat(event) {
+            event.preventDefault();
+            const message = chatInput.value.trim();
+            if (!message || sendButton.disabled) {
+                return;
+            }
+
+            const isPHQ9 = Object.keys(responses).length > 2;
+            const result = isPHQ9 ? getPHQ9Result(totalScore) : { severity: 'Normal', action: 'None' };
+            const historyForRequest = [...chatHistory];
+            chatHistory.push({ role: 'user', text: message });
+            chatInput.value = '';
+            sendButton.disabled = true;
+            sendButton.textContent = '...';
+            renderChat();
+
+            try {
+                const response = await fetch('/api/carebot/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message,
+                        history: historyForRequest,
+                        context: {
+                            severity: result.severity,
+                            score: String(totalScore),
+                            action: result.action,
+                        },
+                    }),
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'เชื่อมต่อ CareBot ไม่สำเร็จ');
+                }
+                chatHistory.push({ role: 'ai', text: data.response });
+            } catch (error) {
+                chatHistory.push({
+                    role: 'ai',
+                    text: 'ขออภัยครับ ดูเหมือนผมจะมีปัญหาในการเชื่อมต่อ โปรดลองอีกครั้งในภายหลังนะครับ',
+                });
+            } finally {
+                sendButton.disabled = false;
+                sendButton.textContent = 'ส่ง';
+                renderChat();
+            }
+        }
+
+        document.getElementById('restart-button').addEventListener('click', resetAssessment);
+        document.getElementById('talk-ai-button').addEventListener('click', openChat);
+        document.getElementById('back-results-button').addEventListener('click', () => {
+            showView('results');
+            subtitle.textContent = 'ผลการประเมินของคุณ';
+        });
+        chatForm.addEventListener('submit', sendChat);
+
+        resetAssessment();
+    </script>
+</body>
+</html>
