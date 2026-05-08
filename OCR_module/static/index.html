@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedGuard AI | Medicine Manager & Safety Checker</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="background-blobs">
+        <div class="blob blob-1"></div>
+        <div class="blob blob-2"></div>
+        <div class="blob blob-3"></div>
+    </div>
+
+    <main class="container">
+        <header>
+            <div class="logo">
+                <i class="fas fa-shield-virus"></i>
+                <h1>MedGuard <span>AI</span></h1>
+            </div>
+            <p>OCR-Powered Medicine Tracker & Interaction Checker</p>
+        </header>
+
+        <section class="grid-layout">
+            <!-- Left Side: OCR & Registration -->
+            <div class="left-panel">
+                <div class="card upload-card">
+                    <div class="drop-zone" id="drop-zone">
+                        <input type="file" id="file-input" accept="image/*" hidden>
+                        <div class="drop-zone-content">
+                            <i class="fas fa-camera"></i>
+                            <h3>Scan Medicine Label</h3>
+                            <p>Drag image or click to upload</p>
+                        </div>
+                        <div class="preview-container" id="preview-container" style="display: none;">
+                            <img id="image-preview" src="" alt="Preview">
+                        </div>
+                    </div>
+                    <button id="scan-btn" class="primary-btn" disabled>
+                        <span>Extract & Check Safety</span>
+                        <i class="fas fa-search-plus"></i>
+                    </button>
+                </div>
+
+                <!-- Vitals Result Card (Dynamic) -->
+                <div id="vitals-card" class="card vitals-card" style="display: none;">
+                    <div class="vitals-header">
+                        <i id="vitals-icon" class="fas fa-heartbeat"></i>
+                        <h3 id="vitals-title">Health Measurement</h3>
+                    </div>
+                    <div id="vitals-body" class="vitals-body">
+                        <!-- Dynamic content -->
+                    </div>
+                    <div id="vitals-interpretation" class="vitals-interpretation">
+                        <!-- Thai interpretation -->
+                    </div>
+                </div>
+
+                <!-- Interaction Warning (Dynamic) -->
+                <div id="interaction-card" class="card warning-card" style="display: none;">
+                    <div class="warning-header">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <h3>Safety Report</h3>
+                    </div>
+                    <p id="interaction-text"></p>
+                </div>
+
+                <!-- OCR Result & Register Form -->
+                <div id="registration-card" class="card result-card" style="display: none;">
+                    <h3>Registration Details</h3>
+                    <div class="form-group">
+                        <label>Medicine Name</label>
+                        <div class="input-with-action">
+                            <input type="text" id="med-name" placeholder="e.g. Aspirin">
+                            <button id="manual-check-btn" class="mini-btn" title="Check Safety">
+                                <i class="fas fa-user-md"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Quantity</label>
+                            <input type="text" id="med-quantity" placeholder="e.g. 1 pill">
+                        </div>
+                        <div class="form-group">
+                            <label>Frequency</label>
+                            <input type="text" id="med-frequency" placeholder="e.g. morning, noon">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Time of Taking</label>
+                            <input type="text" id="med-timing" placeholder="e.g. AC (Before meal)">
+                        </div>
+                        <div class="form-group">
+                            <label>Expiry Date</label>
+                            <input type="text" id="med-expiry" placeholder="e.g. 12/2026">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Instructions</label>
+                        <textarea id="med-instructions" rows="2" placeholder="e.g. Take with water"></textarea>
+                    </div>
+                    <button id="register-btn" class="success-btn">
+                        <span>Register Medicine</span>
+                        <i class="fas fa-plus-circle"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Right Side: Current Medicines List -->
+            <div class="right-panel">
+                <div class="card dashboard-card">
+                    <div class="dash-header">
+                        <h3>Current Medications</h3>
+                        <div class="header-actions">
+                            <button id="manual-add-btn" class="icon-btn-text" title="Add Manually">
+                                <i class="fas fa-plus"></i> Manual Add
+                            </button>
+                            <span id="med-count" class="badge">0</span>
+                        </div>
+                    </div>
+                    <div id="medicine-list" class="med-list">
+                        <!-- List items will be injected here -->
+                        <div class="empty-state">
+                            <i class="fas fa-pills"></i>
+                            <p>No medicines registered yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <div id="loader" class="loader-overlay" style="display: none;">
+            <div class="loader-content">
+                <div class="spinner"></div>
+                <p id="loader-text">Analyzing image & checking interactions...</p>
+            </div>
+        </div>
+        <div id="toast-container" class="toast-container"></div>
+    </main>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
